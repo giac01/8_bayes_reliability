@@ -7,9 +7,18 @@ rm(list = ls(all.names = TRUE))
 
 # Load Data --------------------------------------------------------------------
 
+loadings_list = list(
+  c( 0, 0, 0, 0, 0, 0),
+  c(.3,.2,.1),
+  c(.3,.2,.1,.1,.1,.1),
+  c(.4,.3,.3,.2,.1,.0),
+  c(.6,.5,.3,.1,.1,.1),
+  c(.7,.6,.6,.5,.4),
+  c(.7,.6,.5,.5,.4,.4,.4,.3,.3)
+)
 
-results     = readRDS(file = file.path("results","4_results_tauinequiv_g.rds"))
-params_list = readRDS(file = file.path("results","4_params_list_g.rds"))
+results     = readRDS(file = file.path("results","4_results_tauinequiv_aa.rds"))
+params_list = readRDS(file = file.path("results","4_params_list_aa.rds"))
 
 params_list %>%
   filter(run_rep ==1)
@@ -18,9 +27,7 @@ params_list %>%
 
 results_table = params_list
 
-# results_table = data.frame(sample_size = as.numeric(sapply(results, function(x) x$settings$n)))
-# results_table$n_items         = sapply(results, function(x) x$settings$n_items) %>% as.numeric()
-# results_table$n_items         = sapply(results, function(x) x$settings$n_items) %>% as.numeric()
+results_table$n_items         = sapply(1:nrow(results_table), function(i) length(loadings_list[[results_table$loading_set[i]]]) )
 
 results_table$pop_rel         = sapply(results, function(x) x$population_reliability) %>% as.numeric()
 results_table$pop_ss_loading  =  sapply(results, function(x) sum(x$settings$loadings^2)) %>% as.numeric()
@@ -38,13 +45,14 @@ results_table$h_lb            = sapply(results, function(x) x$h_reliability$ci[1
 results_table$h_ub            = sapply(results, function(x) x$h_reliability$ci[2])%>% as.numeric()
 # results_table$h_ci_contain    = (results_table$pop_rel > results_table$h_lb) & (results_table$pop_rel < results_table$h_ub) 
 
+# results[[10]]$true_score_model_score_cor$estimate^2
 
 # Other coverage statistics
 
-results_table$true_score_cor2              = sapply(results, function(x) x$true_score_cor) %>% as.numeric()
+results_table$true_score_cor2              = sapply(results, function(x) x$true_score_cor$estimate^2) %>% as.numeric()
 results_table$true_score_coverage          = sapply(results, function(x) x$true_score_coverage)%>% as.numeric()
-results_table$true_score_factor_score_cor2 = sapply(results, function(x) x$true_score_factor_score_cor2)%>% as.numeric()   # This is the NON-SQUARED CORRELATION CURRENTLY - SHOULD CHANGE!
-results_table$true_score_model_score_cor2  = sapply(results, function(x) x$true_score_model_score_cor2)%>% as.numeric()
+results_table$true_score_factor_score_cor2 = sapply(results, function(x) x$true_score_factor_score_cor$estimate^2)%>% as.numeric()   # This is the NON-SQUARED CORRELATION CURRENTLY - SHOULD CHANGE!
+results_table$true_score_model_score_cor2  = sapply(results, function(x) x$true_score_model_score_cor$estimate^2)%>% as.numeric()
 
 results_table$sample_sizes = factor(results_table$sample_sizes)
 results_table$diag_divergences = sapply(results, function(x) x$diagnostics_divergences) %>% as.numeric()
@@ -58,20 +66,21 @@ results_table$diag_ebfmi_binary = as.numeric(results_table$diag_ebfmi>0)
 # Results Table-----------------------------------------------------------------
 results_table_long = results_table %>%
   select(-any_of(c(starts_with("diag")))) %>%
-  select(-loadings_set) %>%
   rowid_to_column() %>%
   pivot_longer(cols = c(rmp_est, h_est, rmp_lb, h_lb, rmp_ub, h_ub), names_to = c("name", ".value"), names_pattern = "(rmp|h)_(.*)") 
 
 ## Comparison between RMP and H ------------------------------------------------
 
 results_table_long %>%
-  group_by( sample_sizes, constained_loadings, n_items, name) %>%
+  group_by( loading_set, sample_sizes, n_items, name) %>%
   mutate(
     difference = est - pop_rel,
     ci_correct = (lb < pop_rel & ub > pop_rel),
     ci_length  = ub - lb
   ) %>%
   summarise(
+    pop_rel  = mean(pop_rel),
+    pop_rel_sd = sd(pop_rel, na.rm = TRUE),
     n = n(),
     mean     = mean(est),
     md       = mean(difference),
@@ -86,6 +95,7 @@ results_table_long %>%
   ungroup() %>%
   # arrange(desc(coverage)) %>%
   select(-coverage_se) %>%
+  # filter(name == "rmp") %>%
   gt() %>%
   gt::cols_move_to_start(name) %>%
   fmt(
@@ -102,7 +112,7 @@ results_table_long %>%
   ) %>%
   cols_label(
     sample_sizes ~ "Sample Size",
-    constained_loadings ~ "Loadings Constrained",
+    # constained_loadings ~ "Loadings Constrained",
     # pop_rel_mean ~ "{{R_pop}}",
     # sens_sigma   ~ "{{:sigma:_sens}}",
     n_items      ~ "# Items",
@@ -110,7 +120,7 @@ results_table_long %>%
     mean_ci_length ~ "Mean Length"
     
   )  %>%
-  tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, constained_loadings, n_items, n)) %>%
+  tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n_items, n)) %>%
   tab_spanner(label = "Estimator Performance", columns = c(mean, mad, md)) %>%
   tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   tab_footnote(
@@ -120,7 +130,8 @@ results_table_long %>%
     style = cell_fill(color = "lightgray"),
     locations = cells_body(
       columns = everything(),
-      rows = which((n_items ==10 | n_items == 40))
+      # rows = which((n_items ==10 | n_items == 40))
+      rows = which(name == "rmp")
     )
   ) 
 

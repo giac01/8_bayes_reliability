@@ -1,3 +1,5 @@
+# DEPRECIATED - NOT USING THIS APPROACH ANYMORE JUST STAN APPROACH
+
 # Load Stuff -------------------------------------------------------------------
 rm(list=ls(all.names = T))
 gc()
