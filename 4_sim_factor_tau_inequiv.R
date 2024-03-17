@@ -14,74 +14,43 @@ list.files(file.path("helper_functions"), pattern = "\\.R$", full.names = TRUE) 
 
 # Compile stan model -----------------------------------------------------------
 
-mod <- cmdstan_model(file.path("helper_functions","stan_factor_model_v6.stan"))
+mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v4.stan"))
 
 # Create Parameter Table ---------------------------------------------------
 
 count_so_far = function(x){
-  # x = params_list$n_items
   out = sapply(1:length(x), function(i) length(which(x[1:i]==x[i])))
   return(out)
 }
 
-# Example of creating a list of all combinations
-params_list <- expand.grid(
-  tau_equivalence = c(FALSE),
-  constained_loadings = c(FALSE, TRUE),
-  sample_sizes = c(200, 500, 2000),
-  n_items = c(4, 6, 12),
-  run_rep = 1:80  # 1 rep takes about 5 minutes (100 took 8.3 hours)
-) 
-
-# Example of creating a list of all combinations
-# params_list <- expand.grid(
-#   tau_equivalence = c(FALSE),
-#   sample_sizes = c(4000),
-#   n_items = c(8),
-#   run_rep = 1:8*4  # 1 rep takes about 5 minutes (100 took 8.3 hours)
-# ) 
-
-params_list$loadings_set = count_so_far(params_list$sample_sizes)
-
-# Create set of loadings to use ------------------------------------------------
-
-loadings_list = list()
-
-for(i in 1:max(params_list$loadings_set)){
-  x = params_list %>%
-    filter(loadings_set == i) 
-  
-  if (length(unique(x$n_items)) !=1 ) {stop("ERROR")}
-  if (length(unique(x$tau_equivalence)) !=1 ) {stop("ERROR")}
-  
-  # if (unique(x$tau_equivalence)==TRUE)   { loadings_list[[i]] = rep(runif(1,.01,.99), unique(x$n_items)) }
-  # if (unique(x$tau_equivalence)==FALSE)  { loadings_list[[i]]  = runif(unique(x$n_items), .01, .99) }
-  
-  # if (unique(x$constained_loadings)==FALSE)   { loadings_list[[i]] = rep(unique(x$n_items), min = .01, max = .99 ) }
-  # if (unique(x$constained_loadings)==FALSE)   { loadings_list[[i]] = rep(unique(x$n_items), min = .3, max = .7 ) }
-  # 
-  # 
-  
-  if (unique(x$constained_loadings)==TRUE)  {
-    # loadings_list[[i]]    = runif(unique(x$n_items), min = 0, max = 1);
-    loadings_list[[i]]    = runif(unique(x$n_items), min = 0, max = 1);
-    
-    loadings_list[[i]]    = sort( loadings_list[[i]], decreasing = TRUE);
-    loadings_list[[i]][1] = runif(1, min = .3, max = .8);
-    loadings_list[[i]][2] = runif(1, min = .3, max = .5);
-  }
-  
-  
-  if (unique(x$constained_loadings)==FALSE)  {
-    loadings_list[[i]]    = runif(unique(x$n_items), min = 0, max = 1);
-  }
+rel_function = function(l){
+  e = 1 - l
+  return(sqrt(sum(l^2/e)/(1+sum(l^2/e))))
 }
 
-params_list = params_list %>%
-  arrange(loadings_set)
+loadings_list = list(
+  c( 0, 0, 0, 0, 0, 0),
+  c(.3,.2,.1),
+  c(.3,.2,.1,.1,.1,.1),
+  c(.4,.3,.3,.2,.1,.0),
+  c(.6,.5,.3,.1,.1,.1),
+  c(.7,.6,.6,.5,.4),
+  c(.7,.6,.5,.5,.4,.4,.4,.3,.3)
+)
 
-saveRDS(params_list, file = file.path("results","4_params_list_g.rds"))
+# Reliabilities 
 
+lapply(loadings_list, rel_function)
+
+# Example of creating a list of all combinations
+params_list <- expand.grid(
+  loading_set  = 1:length(loadings_list),
+  sample_sizes = c(200, 500, 2000),
+  # sample_sizes = c(200),
+  run_rep = 1:50  # 1 rep takes about 5 minutes (100 took 8.3 hours)
+) 
+
+saveRDS(params_list, file = file.path("results","4_params_list_aa.rds"))
 
 # Run code in parallel using future --------------------------------------------
 
@@ -92,8 +61,8 @@ results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), fu
   run_factor_sim_2(
     i = i,
     n = params_list$sample_sizes[i], 
-    n_items = params_list$n_items[i], 
-    loadings = loadings_list[[params_list$loadings_set[i]]],
+    n_items  = length(loadings_list[[params_list$loading_set[i]]]), 
+    loadings = loadings_list[[params_list$loading_set[i]]],
     additional_tests = TRUE
   )
 }
@@ -103,6 +72,6 @@ time_b - time_a
 
 future::plan(future::sequential())
 
-saveRDS(results, file = file.path("results","4_results_tauinequiv_g.rds"))
+saveRDS(results, file = file.path("results","4_results_tauinequiv_aa.rds"))
 
 # Time difference of 2.264748 days
