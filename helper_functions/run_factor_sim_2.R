@@ -1,10 +1,13 @@
+# run_factor_sim_2
+
 run_factor_sim_2 = function(
     i,
     n,
     n_items,
     loadings,
     h_ci_calc = TRUE,
-    additional_tests = FALSE
+    additional_tests = FALSE,
+    use_init = TRUE
 ){
   # browser()
   out = list()
@@ -17,7 +20,7 @@ run_factor_sim_2 = function(
   
   error_variances = 1^2 - loadings^2
   weights         = loadings/error_variances
-  intercepts = rnorm(n_items, mean = 0,  sd = 1)
+  intercepts = rnorm(n_items, mean = 0,  sd = 0)  # Set intercepts to 0!
   
   out[["settings"]][["intercepts"]] =  intercepts
   
@@ -39,18 +42,12 @@ run_factor_sim_2 = function(
     mutate(name = factor(name))
   
   
-  out[["regression_factor_score"]] =  as.matrix(dat[,paste0("X",1:n_items)]) %*% weights                 # See P3 : DOI: 10.1348/000711008X365676
-  out[["true_score_cor"]]  = cor(out[["regression_factor_score"]],dat$true_scores)^2     
+  regression_factor_score =  as.matrix(dat[,paste0("X",1:n_items)]) %*% weights                 # See P3 : DOI: 10.1348/000711008X365676
+  out[["true_score_cor"]]  = cor.test(regression_factor_score,dat$true_scores)     
   out[["population_reliability"]]     = sqrt(sum(loadings^2/error_variances)/(1+sum(loadings^2/error_variances)))^2 # See P3 : DOI: 10.1348/000711008X365676
   
   out[["alpha_reliability"]] <- tryCatch({
     MBESS::ci.reliability(data=dplyr::select(dat_scale, -true_scores, -mean), type = "alpha", interval.type = "ml")
-  }, error = function(e) {
-    NULL  # Return NULL in case of an error without showing a message
-  })
-  
-  out[["omega_reliability"]] <- tryCatch({
-    MBESS::ci.reliability(data=dplyr::select(dat_scale, -true_scores, -mean), type = "omega", interval.type = "mlr")
   }, error = function(e) {
     NULL  # Return NULL in case of an error without showing a message
   })
@@ -72,14 +69,23 @@ run_factor_sim_2 = function(
     y = dat_long$value
   )
   
+  if (use_init){                                                                # Initialization has a HUGE impact on small sample performance! 
+    init_fun <- function() list(theta  = rnorm(nrow(dat), 0,0),
+                                lambda = rnorm(length(loadings),.5,0),
+                                sigma  = rnorm(length(loadings),.5,0),
+                                sigma_add = rnorm(length(loadings),.01, 0)
+    )
+  }
+  
   internal_results = mod$sample(
+    init = switch(as.numeric(use_init)+1,NULL, init_fun),                       # ifeslse can't return NULL
     data = dat_stan,
     seed = 123,
     chains = 2,
     parallel_chains = 1,
     refresh = 500, # print update every 500 iters
     iter_warmup = 1500,
-    iter_sampling = 3000,
+    iter_sampling = 2000,
     adapt_delta = .95
   )
   # Diagnostics using cmdstanr
@@ -98,6 +104,7 @@ run_factor_sim_2 = function(
   
   if (additional_tests==TRUE){
     
+    # calculate model-predicted true scores & their credible intervals
     theta_scores = 
     internal_results %>%
       tidybayes::spread_draws(theta[pps]) %>%
@@ -113,11 +120,11 @@ run_factor_sim_2 = function(
     
     out[["true_score_coverage"]] = length(which(theta_scores$ci_contain_true_score==1))/length(theta_scores$ci_contain_true_score)
     
-    out[["true_score_model_score_cor2"]]  = cor(dat$true_scores, theta_scores$y)   # TODO - ADD CI here, and remove "2"
+    out[["true_score_model_score_cor"]]  = cor.test(dat$true_scores, theta_scores$y)   
     
     factor_score = psych::fa(dplyr::select(dat_scale, -true_scores, -mean), nfactors = 1)
     
-    out[["true_score_factor_score_cor2"]] = cor(dat$true_scores, factor_score$scores) # TODO - ADD CI here, and remove "2"
+    out[["true_score_factor_score_cor"]] = cor.test(dat$true_scores, factor_score$scores)
     
   }
   
