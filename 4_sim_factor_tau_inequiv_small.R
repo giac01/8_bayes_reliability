@@ -59,7 +59,7 @@ params_list <- expand.grid(
   loading_set  = 1:length(loadings_list),
   sample_sizes = c(200, 500, 2000),
   # sample_sizes = c(200),
-  run_rep = 1:100  # 1 rep takes about 5 minutes (100 took 8.3 hours)
+  run_rep = 1:50  # 1 rep takes about 5 minutes (100 took 8.3 hours)
 ) 
 
 saveRDS(params_list, file = file.path("results","4_params_list_aa.rds"))
