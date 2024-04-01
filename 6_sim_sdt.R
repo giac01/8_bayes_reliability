@@ -25,7 +25,7 @@ example_data = sim_sdt_binomial(
   n_trials_new = 20)
 
 sim_model = brms::brm(
-  y | trials(n_trials) ~ 0 +  cond + (0 + cond || pps),
+  y | trials(n_trials) ~  1 + cond + (1 + cond | pps),
   family = binomial(link = "probit"),
   # data =  data_frame(value = 0, cond=0, pps=1),
   data = example_data$data,
@@ -33,6 +33,7 @@ sim_model = brms::brm(
   chains  = 2,
   warmup  = 1000, 
   iter    = 3000,
+  init    = .01,
   # prior = c(prior(constant(0.25), class = "b",  coef = "cond"),
   #           prior(constant(0.125), class = "sd", coef = "cond", group = "pps")),
   backend = "cmdstanr",
@@ -42,22 +43,20 @@ sim_model = brms::brm(
 # Create Parameter Table ---------------------------------------------------
 
 params_list <- expand.grid(
-  sens_mean      = c(0, .25, .5),
+  sens_mean      = c(.5),
   sens_sigma     = c(0,.2,.4),
   k_mean         = c(0),
-  k_sigma        = c(0),
-  sample_sizes = c( 100, 250, 1000),
+  k_sigma        = c(0, .20),
+  sample_sizes = c( 200, 500, 1000),
   n_items = c(10, 20, 40),
   run_rep = 1:1  # 1 rep takes about 5 minutes (100 took 8.3 hours)
 ) # 8100 obs in 
 
-
-saveRDS(params_list, file = file.path("results","6_params_list_b.rds"))
-
+saveRDS(params_list, file = file.path("results","6_params_list_c.rds"))
 
 # Run code in parallel using future --------------------------------------------
 
-future::plan(future::multisession(workers = 8))
+future::plan(future::multisession(workers = availableCores()))
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), function(i) {
@@ -68,7 +67,8 @@ results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), fu
     k_mean     = params_list$k_mean[i],
     k_sigma    = params_list$k_sigma[i],
     n_pps      = params_list$sample_sizes[i], 
-    n_items    = params_list$n_items[i]
+    n_items    = params_list$n_items[i],
+    save_results = T
   )
 }
 )
@@ -78,6 +78,14 @@ time_b - time_a
 future::plan(future::sequential())
 
 # save(results, file = file.path("results","4_results_tauinequiv_d.Rdata"))
-saveRDS(results, file = file.path("results","6_results_b.rds"))
+# saveRDS(results, file = file.path("results","6_results_c.rds"))
+
+
+timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
+filename <- sprintf("6_results_%s.rds", timestamp)
+saveRDS(results, file = file.path("results", filename))
+
+
+
 
 

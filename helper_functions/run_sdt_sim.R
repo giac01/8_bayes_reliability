@@ -22,7 +22,7 @@
     b_prior = NULL,
     sd_prior = NULL
   ){
-  browser()
+  # browser()
   results = list()
   
   results[["settings"]] = list()

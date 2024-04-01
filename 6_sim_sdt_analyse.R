@@ -11,18 +11,19 @@ results     = readRDS(file = file.path("results","6_results_a.rds"))
 results_pop = readRDS(file = file.path("results","6_results_pop_vi.rds"))
 params_list = readRDS(file = file.path("results","6_params_list_a.rds"))
 
+# Sample size used in "population" simulations. 
 results_pop[[1]]$settings$n_pps
 
 ## Extract our estimates of the "true" reliabilities ---------------------------
 
-simulated_reliabilities  = sapply(results_pop, function(x) x$cor_bayes_estimate_true$estimate^2) 
-simulated_reliabilities  = ifelse(is.na(simulated_reliabilities), 0,  simulated_reliabilities)
+simulated_reliabilities         = sapply(results_pop, function(x) x$cor_bayes_estimate_true$estimate^2) 
+simulated_reliabilities         = ifelse(is.na(simulated_reliabilities), 0,  simulated_reliabilities)
 sens_mean                       = sapply(results_pop, function(x) x$settings$sens_mean)
-sens_sigma                       = sapply(results_pop, function(x) x$settings$sens_sigma) 
+sens_sigma                      = sapply(results_pop, function(x) x$settings$sens_sigma) 
 k_mean                          = sapply(results_pop, function(x) x$settings$k_mean) 
 k_sigma                         = sapply(results_pop, function(x) x$settings$k_sigma) 
 n_items                         = sapply(results_pop, function(x) x$settings$n_items) 
-n_pps                         = sapply(results_pop, function(x) x$settings$n_pps) 
+n_pps                           = sapply(results_pop, function(x) x$settings$n_pps) 
 
 settings_used = paste(sens_mean, sens_sigma, k_mean, k_sigma, n_items, sep ="_")
 
@@ -88,88 +89,7 @@ results_table_long = results_table %>%
 
 ## Analysis of coverage/bias ---------------------------------------------------
 
-# results_table_long %>%
-#   mutate(
-#     difference = est - pop_rel,
-#     ci_correct = (lb < pop_rel & ub > pop_rel),
-#     ci_length  = ub - lb
-#   ) %>%
-#   summarise(
-#     n = n(),
-#     mean     = mean(est),
-#     mad      = mean(abs(difference)),
-#     md       = mean(difference),
-#     coverage = length(which(ci_correct))/length(ci_correct),
-#     coverage_se = sqrt((coverage*(1-coverage))/n),
-#     coverage_lb = coverage - 1.96*coverage_se,
-#     coverage_ub = coverage + 1.96*coverage_se,
-#     mean_ci_length = mean(ci_length)
-#   )
-# 
-# 
-# res_table_1 = 
-# results_table_long %>%
-#   group_by(sample_sizes, sens_sigma, n_items) %>%
-#   mutate(
-#     difference = est - pop_rel,
-#     ci_correct = (lb < pop_rel & ub > pop_rel),
-#     ci_length  = ub - lb
-#   ) %>%
-#   summarise(
-#     n = n(),
-#     pop_rel_mean         = mean(pop_rel),
-#     pop_rel_sd      = sd(pop_rel),
-#     mean     = mean(est),
-#     mad      = mean(abs(difference)),
-#     md       = mean(difference),
-#     coverage = length(which(ci_correct))/length(ci_correct),
-#     coverage_se = sqrt((coverage*(1-coverage))/n),
-#     coverage_lb = coverage - 1.96*coverage_se,
-#     coverage_ub = coverage + 1.96*coverage_se,
-#     mean_ci_length = mean(ci_length)
-#   )
-# 
-# #
-# 
-# res_table_1 %>%
-#   ungroup() %>%
-#   select(-pop_rel_sd, -coverage_se) %>%
-#   gt() %>%
-#   fmt(
-#     columns = where(is.numeric),
-#     fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
-#   ) %>%
-#     fmt_number(
-#       columns = c(n, n_items),
-#       decimals = 0
-#     ) %>%
-#     fmt_percent(
-#       columns = starts_with("coverage"),
-#       decimals = 1
-#     ) %>%
-#     cols_label(
-#       sample_sizes = "Sample Size",
-#       # name         = "Estimator",
-#       n_items      = "# Items",
-#       md           = "bias"
-#     ) %>%
-#     tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n_items, n)) %>%
-#     tab_spanner(label = "Coverage", columns = starts_with("coverage")) %>%
-#     # tab_style(
-#     #   style = cell_fill(color = "lightgray"),
-#     #   locations = cells_body(
-#     #     columns = everything(),
-#     #     rows = slice((n_items ==10 | n_items == 40))
-#     #   )
-#     # ) %>%
-#     tab_footnote(
-#       "mae = Mean Absolute Error."
-#     )
-#   
-  # gtsave(filename = file.path("results","6_results_table_1.html"))
-  
-  
-    results_table_long %>%
+  results_table_long %>%
     group_by(n_items, sens_sigma) %>%
     mutate(
       difference = est - pop_rel,
@@ -232,7 +152,7 @@ results_table_long = results_table %>%
   
   
   results_table_long %>%
-    group_by(sample_sizes, n_items, sens_sigma) %>%
+    group_by(sample_sizes, n_items, sens_sigma, sens_mean) %>%
     mutate(
       difference = est - pop_rel,
       ci_correct = (lb < pop_rel & ub > pop_rel),
@@ -291,8 +211,47 @@ results_table_long = results_table %>%
   
   gtsave(filename = file.path("results","6_results_table_1.html"))
   
+
+# Plots ------------------------------------------------------------------------
+  
+  results_table_long %>% 
+    ggplot(aes(x = pop_rel, y = est)) + 
+    geom_point() + 
+    geom_abline(slope = 1, intercept = 0) +
+    facet_wrap(~sample_sizes + n_items)
+  
+  results_table_long %>% 
+    ggplot(aes(x = pop_rel, y = est)) + 
+    geom_point() + 
+    geom_abline(slope = 1, intercept = 0) +
+    geom_errorbar(aes(ymin = lb, ymax = ub)) +
+    facet_wrap(~sample_sizes + n_items)
+  
+  table(results_table_long$settings_used)
+  results_table_long %>% 
+    mutate(
+      settings_used_pretty = paste0(
+        "mu[beta]^2 == ", round(sens_mean, digits = 2),
+        "*','~sigma[theta]^2 == ", round(sens_sigma, digits = 2),
+        "*','~mu[kappa]^2 == ", round(k_mean, digits = 2),
+        "*','~sigma[kappa]^2 == ", round(k_sigma, digits = 2),
+        "*','~N[items] == ", round(n_items, digits = 0)
+     )
+    ) %>%
+    ggplot(aes(x = sample_sizes, y = est)) + 
+    geom_point() + 
+    geom_errorbar(aes(ymin = lb, ymax = ub)) +
+    geom_hline(aes(yintercept = pop_rel), col = "red") +
+    facet_wrap(~settings_used_pretty, labeller = label_parsed)
   
   
+  
+  results_table$settings_used = paste(results_table$sens_mean, 
+                                      results_table$sens_sigma, 
+                                      results_table$k_mean, 
+                                      results_table$k_sigma, 
+                                      results_table$n_items, 
+                                      sep = "_")
   
   
 

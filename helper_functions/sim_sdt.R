@@ -27,6 +27,7 @@ sim_sdt = function(
     n_pps
   ){
 
+  print("this function has errors and needs updating DO NOT USE! See sim_sdt_binomial")
 # m1_pps = rnorm(n_pps, m1_mean, m_sigma^2)
 # m2_pps = rnorm(n_pps, m2_mean, m_sigma^2)
   sens_pps= rnorm(n_pps, mean = sens_mean, sd = sens_sigma)

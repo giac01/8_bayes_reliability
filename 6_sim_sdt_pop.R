@@ -1,5 +1,7 @@
 # Notes ------------------------------------------------------------------------
 
+# This script is for running the analyses on a really large dataset to calculate the "population" reliability
+
 # brms seems to hard code constant priors to the stan model - so this approach here requires recompiling the model quite a few times, whcih isn't super efficient, but workable with a limited number of runs. 
 
 
