@@ -17,17 +17,41 @@ loadings_list = list(
   c(.7,.6,.5,.5,.4,.4,.4,.3,.3)
 )
 
-results     = readRDS(file = file.path("results","4_results_tauinequiv_aa.rds"))
-params_list = readRDS(file = file.path("results","4_params_list_aa.rds"))
+loadings_list_paste = lapply(loadings_list, function(x) paste0(x, collapse = "_")) %>% unlist()
 
-params_list %>%
-  filter(run_rep ==1)
+loadings_list_pretty =  lapply(loadings_list, function(x) paste0(gbtoolbox::apa_num(x, n_decimal_places = 1), collapse = ", ")) %>% unlist()
+loadings_list_pretty2 = lapply(loadings_list, function(x) paste0("Loadings:", paste0(gbtoolbox::apa_num(x, n_decimal_places = 1), collapse = ", "))) %>% unlist()
+loadings_list_pretty
+loadings_list_pretty2
+# I ran the simulation code multiple times on the cluster, so we have several results files we want to join
+
+results_path = file.path("results","4_factor_inequivalent_results")
+results_files = list.files(results_path, 
+                           pattern = "^4_results_tauinequiv_",
+                           full.names = TRUE
+                           )
+results = lapply(results_files, function(x) readRDS(x))
+results = unlist(results, recursive = FALSE)
+
+
+# params_list = readRDS(file = file.path("results","4_params_list_aa.rds"))
+
+# params_list %>%
+#   filter(run_rep ==1)
 
 ## Create results table for simulation results ---------------------------------
 
-results_table = params_list
+results_table = data.frame(i = 1:length(results))
 
-results_table$n_items         = sapply(1:nrow(results_table), function(i) length(loadings_list[[results_table$loading_set[i]]]) )
+results_table$n               = sapply(1:nrow(results_table), function(i) results[[i]]$settings$n )
+results_table$sample_sizes    = sapply(1:nrow(results_table), function(i) results[[i]]$settings$n )
+
+results_table$n_items         = sapply(1:nrow(results_table), function(i) results[[i]]$settings$n_items )
+results_table$loadings        = unlist(sapply(1:nrow(results_table), function(i) paste0(results[[i]]$settings$loadings, collapse = "_" )))
+results_table$loading_set     = match(results_table$loadings , loadings_list_paste) 
+results_table$loading_list_pretty  = loadings_list_pretty[results_table$loading_set]
+results_table$loading_list_pretty2 = loadings_list_pretty2[results_table$loading_set]
+results_table$intercepts      = sapply(1:nrow(results_table), function(i) results[[i]]$settings$intercepts )
 
 results_table$pop_rel         = sapply(results, function(x) x$population_reliability) %>% as.numeric()
 results_table$pop_ss_loading  =  sapply(results, function(x) sum(x$settings$loadings^2)) %>% as.numeric()
@@ -71,8 +95,8 @@ results_table_long = results_table %>%
 
 ## Comparison between RMP and H ------------------------------------------------
 
-results_table_long %>%
-  group_by( loading_set, sample_sizes, n_items, name) %>%
+results_table_cleaned =  results_table_long %>%
+  group_by( loading_set, sample_sizes, name) %>%
   mutate(
     difference = est - pop_rel,
     ci_correct = (lb < pop_rel & ub > pop_rel),
@@ -83,6 +107,9 @@ results_table_long %>%
     pop_rel_sd = sd(pop_rel, na.rm = TRUE),
     n = n(),
     mean     = mean(est),
+    mean_se  = sd(est)/sqrt(n),
+    mean_lb  = mean - 1.96*mean_se,
+    mean_ub  = mean + 1.96*mean_se,
     md       = mean(difference),
     mad      = mean(abs(difference)),
     coverage = length(which(ci_correct))/length(ci_correct),
@@ -93,6 +120,12 @@ results_table_long %>%
     `Mean True Score Coverage` = mean(true_score_coverage)
   ) %>%
   ungroup() %>%
+  mutate(
+    loadings_list_pretty = loadings_list_pretty[loading_set],
+    loadings_list_pretty2 = loadings_list_pretty2[loading_set]
+  )
+
+results_table_cleaned %>%
   # arrange(desc(coverage)) %>%
   select(-coverage_se) %>%
   # filter(name == "rmp") %>%
@@ -103,7 +136,7 @@ results_table_long %>%
     fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
   ) %>%
   fmt_number(
-    columns = c(n, n_items),
+    columns = c(n),
     decimals = 0
   ) %>%
   fmt_percent(
@@ -115,14 +148,14 @@ results_table_long %>%
     # constained_loadings ~ "Loadings Constrained",
     # pop_rel_mean ~ "{{R_pop}}",
     # sens_sigma   ~ "{{:sigma:_sens}}",
-    n_items      ~ "# Items",
+    # n_items      ~ "# Items",
     md           ~ "bias",
     mean_ci_length ~ "Mean Length"
     
   )  %>%
-  tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n_items, n)) %>%
+  tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n)) %>%
   tab_spanner(label = "Estimator Performance", columns = c(mean, mad, md)) %>%
-  tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
+  tab_spanner(label = "Confidence/Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   tab_footnote(
     "{{R_pop}} = Simulated Population Reliability. mae = Mean Absolute Error. n = number of simulations. These results are averaged over the different sample sizes"
   ) %>%
@@ -179,12 +212,12 @@ results_table_long %>%
     # constained_loadings ~ "Loadings Constrained",
     # pop_rel_mean ~ "{{R_pop}}",
     # sens_sigma   ~ "{{:sigma:_sens}}",
-    n_items      ~ "# Items",
+    # n_items      ~ "# Items",
     md           ~ "bias",
     mean_ci_length ~ "Mean Length"
     
   )  %>%
-  tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n_items, n)) %>%
+  tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n)) %>%
   tab_spanner(label = "Estimator Performance", columns = c(mean, mad, md)) %>%
   tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   tab_footnote(
@@ -202,36 +235,62 @@ results_table_long %>%
 
 ### Coverage -------------------------------------------------------------------
 
-results_table_long %>%
-  group_by( sample_sizes, constained_loadings, n_items, name) %>%
-  mutate(
-    difference = est - pop_rel,
-    ci_correct = (lb < pop_rel & ub > pop_rel),
-    ci_length  = ub - lb
-  ) %>%
-  summarise(
-    n = n(),
-    mean     = mean(est),
-    md       = mean(difference),
-    mad      = mean(abs(difference)),
-    coverage = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
-    mean_ci_length = mean(ci_length)
-  ) %>%
-  ungroup() %>%
-  mutate(n_items = factor(n_items)) %>%
-  ggplot(aes(y = coverage, ymin = coverage_lb, ymax = coverage_ub, x = n_items, col = name)) +
+results_table_cleaned %>%
+  mutate(loadings_list_pretty2 = factor(loadings_list_pretty2)) %>%
+  ggplot(aes(y = coverage, 
+             ymin = coverage_lb, 
+             ymax = coverage_ub, 
+             x = sample_sizes, 
+             col = name)) +
   geom_errorbar(size = 2) +  
   geom_hline(yintercept = 0.95) +
   jtools::theme_apa() +
   scale_color_manual(values=c("#E69F00", "#56B4E9")) +
-  labs(x = "Number of Items Per Simulation", y = "Credible Interval Coverage") +
-  coord_cartesian(ylim = c(.5,1)) +
-  facet_wrap(~constained_loadings + sample_sizes) 
+  labs(x = "Number of Items Per Simulation", 
+       y = "Credible Interval Coverage") +
+  coord_cartesian(ylim = c(0,1)) +
+  facet_wrap(~ loadings_list_pretty2) 
 
-## Do models without model fit issues fit beter ?? -----------------------------
+
+### Distribution of effect sizes -----------------------------------------------
+
+##### Using just summary data --------------------------------------------------
+
+results_table_cleaned %>%
+  ggplot(aes(y = mean, ymin = mean_lb, ymax = mean_ub, x = sample_sizes, col = name)) +
+  geom_errorbar(size = 2) +  
+  geom_hline(aes(yintercept = pop_rel)) +
+  jtools::theme_apa() +
+  scale_color_manual(values=c("#E69F00", "#56B4E9")) +
+  labs(x = "Number of Items Per Simulation", y = "Credible Interval Coverage") +
+  coord_cartesian(ylim = c(0,1)) +
+  facet_wrap(~ loadings_list_pretty2) 
+
+##### Using ordinal data -------------------------------------------------------
+
+results_table_long  %>%
+  ggplot(aes(y = est, x = sample_sizes, col = name)) +
+  geom_jitter(width = 0.1, height = 0, shape = 1, alpha = .5) +
+  geom_hline(aes(yintercept = pop_rel)) +
+  stat_summary(fun.data = ggplot2::mean_cl_normal,
+               geom = "errorbar",
+               size = 1
+               ) +
+  facet_wrap(~ loading_list_pretty2) + 
+  labs(y = "Sample reliability estimate", x = "Sample Size") +
+  guides(col=guide_legend(title="Estimator")) +
+  ggplot2::theme_bw() +
+  theme(
+    legend.position = c(.95, .05),
+    legend.justification = c("right", "bottom"),
+    # legend.box.just = "right",
+    # legend.margin = margin(6, 6, 6, 6)
+  )
+
+ggsave(file.path("plots","4_rawdata_plot.png"), width = 7.5, height = 7.5)
+
+colnames(results_table_long)
+## Do models without model fit issues fit better ?? ----------------------------
 
 # Does population coefficient H describe how well the observed factor scores and true scores correlate? -------------------
 

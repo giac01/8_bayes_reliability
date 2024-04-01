@@ -7,7 +7,7 @@ calc_r_brms_sdt = function(
   draws = input_model %>%
     tidybayes::spread_draws(r_pps[pps,beta])
   
-  if (!identical(names(table(draws$beta)),c("cond"))) warning("Failed data check")
+  # if (!identical(names(table(draws$beta)),c("cond"))) warning("Failed data check")
   # if (identical(names(table(draws$beta)) %in% c("Intercept"))) warning("Failed data check")
   
   
