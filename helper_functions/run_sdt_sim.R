@@ -10,8 +10,8 @@
     i,
     sens_mean,
     sens_sigma,
-    k_mean  = 0,
-    k_sigma = 0,
+    k_mean,
+    k_sigma,
     n_items,
     n_pps,
     retest    = TRUE,
@@ -46,16 +46,11 @@
   if(is.null(n_trials_new)) n_trials_new = n_items
   
   sens_pps_direct = rnorm(n_pps, mean = sens_mean, sd = sens_sigma)
-  k_pps_direct    = rnorm(n_pps, k_mean, k_sigma^2)
+  k_pps_direct    = rnorm(n_pps, mean = k_mean,    sd = k_sigma)
 
   dat = sim_sdt_binomial(
     sens_pps_direct = sens_pps_direct,
     k_pps_direct    = k_pps_direct,
-    
-    # sens_mean    = sens_mean,
-    # sens_sigma   = sens_sigma,
-    # k_mean       = k_mean,
-    # k_sigma      = k_sigma,
     n_trials_old = n_trials_old,
     n_trials_new = n_trials_new,
     n_pps        = n_pps
@@ -65,10 +60,6 @@
   dat_testretest = sim_sdt_binomial(
     sens_pps_direct = sens_pps_direct,
     k_pps_direct    = k_pps_direct,
-    # sens_mean    = sens_mean,
-    # sens_sigma   = sens_sigma,
-    # k_mean       = k_mean,
-    # k_sigma      = k_sigma,
     n_trials_old = n_trials_old,
     n_trials_new = n_trials_new,
     n_pps        = n_pps
@@ -80,10 +71,6 @@
     dat_splithalf[[1]] = sim_sdt_binomial(
       sens_pps_direct = sens_pps_direct,
       k_pps_direct    = k_pps_direct,
-      # sens_mean    = sens_mean,
-      # sens_sigma   = sens_sigma,
-      # k_mean       = k_mean,
-      # k_sigma      = k_sigma,
       n_trials_old = round(n_trials_old/2),
       n_trials_new = round(n_trials_new/2),
       n_pps        = n_pps
@@ -93,10 +80,6 @@
     dat_splithalf[[2]] = sim_sdt_binomial(
       sens_pps_direct = sens_pps_direct,
       k_pps_direct    = k_pps_direct,
-      # sens_mean    = sens_mean,
-      # sens_sigma   = sens_sigma,
-      # k_mean       = k_mean,
-      # k_sigma      = k_sigma,
       n_trials_old = round(n_trials_old/2),
       n_trials_new = round(n_trials_new/2),
       n_pps        = n_pps
@@ -164,8 +147,14 @@
   
   if (!is.null(b_prior) & !is.null(sd_prior)){
     print("using prior model")
-    my_prior = c(set_prior(paste0("constant(",b_prior,")"), class = "b",  coef = "cond"),
-                 set_prior(paste0("constant(",sd_prior,")"), class = "sd", coef = "cond", group = "pps"))
+    my_prior = c(
+      set_prior(paste0("constant(",-1*k_mean,")"), class = "Intercept"),
+      set_prior(paste0("constant(",k_sigma,")"), class = "sd", coef = "Intercept", group = "pps"),
+      
+      set_prior(paste0("constant(",b_prior,")"), class = "b",  coef = "cond"),
+      set_prior(paste0("constant(",sd_prior,")"), class = "sd", coef = "cond", group = "pps")
+      
+    )
     internal_results = update(
       # chains      = 2,
       # cores       = 1,
@@ -217,9 +206,10 @@
     results[["diagnostics_divergences"]]       = sum(as.numeric(rstan::get_divergent_iterations(internal_results$fit)))
     results[["diagnostics_treedepth"]]         = rstan::get_num_max_treedepth(internal_results$fit)
     results[["diagnostics_low_bfmi_chains"]]   = rstan::get_low_bfmi_chains(internal_results$fit)
+    
   }
   
-  if ((i %% 1)==0){
+  if ((i %% 10)==0){
     write.csv(data.frame(y=""), file.path("progress_sdt",paste0(i,".ignore")))
   }
 

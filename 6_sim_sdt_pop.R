@@ -29,49 +29,46 @@ example_data = sim_sdt_binomial(
   # k_sigma    = params_list$k_sigma[i],
   n_pps        = 20, 
   n_trials_old = 10,
-  n_trials_new = 20
-  )
+  n_trials_new = 20)
 
 sim_model = brms::brm(
-  y | trials(n_trials) ~ 0 +  cond + (0 + cond || pps),
+  y | trials(n_trials) ~ 1 + cond + (1 + cond || pps),  # I've set the random effects to uncorrelated here on purpose (in the fitted models we allow for a correlation between them)
   family = binomial(link = "probit"),
   # data =  data_frame(value = 0, cond=0, pps=1),
   data = example_data$data,
   cores   = 1,
   chains  = 2,
   warmup  = 1000, 
-  iter    = 3000,
-  prior = c(prior(constant(0.25), class = "b",  coef = "cond"),
-            prior(constant(0.125), class = "sd", coef = "cond", group = "pps")),
+  iter    = 2000,
+  init    = .01,
+  prior = c(
+    prior(constant(.05), class = "Intercept"),
+    prior(constant(.5), class = "sd", coef = "Intercept", group = "pps"),
+    prior(constant(0.25), class = "b",  coef = "cond"),
+    prior(constant(0.125), class = "sd", coef = "cond", group = "pps")),
   backend = "rstan",
   # threads = threading(4),
   algorithm = "meanfield"   # meanfield does not seem to work with cmdstanr currently!
 )
 
-# brms is giving me two kinds of errors running cmdstanr meanfield algorithm... 
-# ON UPDATE(): Start sampling
-# Error: Duplicate variable names are not allowed in draws objects.
-# The following variable names are duplicates:
-#   {'lprior'}
-
 # Create Parameter Table ---------------------------------------------------
 
 params_list <- expand.grid(
-  sens_mean      = c(0, .25, .5),
+  sens_mean      = c(.5),
   sens_sigma     = c(0,.2,.4),
   k_mean         = c(0),
-  k_sigma        = c(0),
-  sample_sizes = c( 50000),
+  k_sigma        = c(0, .20),
+  sample_sizes = c( 10000),
   n_items = c(10, 20, 40),
-  run_rep = 1  # 1 rep takes about 5 minutes (100 took 8.3 hours)
+  run_rep = 1:1  # 1 rep takes about 5 minutes (100 took 8.3 hours)
 ) # 8100 obs in 
 
-saveRDS(params_list, file = file.path("results","6_params_list_pop.rds"))
+saveRDS(params_list, file = file.path("results","6_params_list_pop_c.rds"))
 
 # Run code in parallel using future --------------------------------------------
 
 # future::plan(future::sequential())
-future::plan(future::multisession(workers = 2))
+future::plan(future::multisession(workers = 8))
 
 # nrow(params_list)
 
@@ -91,7 +88,7 @@ results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), fu
     n_items    = params_list$n_items[i],
     b_prior    = params_list$sens_mean[i],
     sd_prior   = params_list$sens_sigma[i],
-    save_results = FALSE
+    save_results = TRUE
   )})
   
 }
@@ -103,7 +100,7 @@ time_b - time_a
 future::plan(future::sequential())
 
 # save(results, file = file.path("results","4_results_tauinequiv_d.Rdata"))
-saveRDS(results, file = file.path("results","6_results_pop_vi.rds"))
+saveRDS(results, file = file.path("results","6_results_pop_c.rds"))
 
 
 
