@@ -133,7 +133,10 @@ results_table_long = results_table %>%
       coverage_se = sqrt((coverage*(1-coverage))/n),
       coverage_lb = coverage - 1.96*coverage_se,
       coverage_ub = coverage + 1.96*coverage_se,
-      mean_ci_length = mean(ci_length)
+      mean_ci_length = mean(ci_length),
+      sum_div     = sum(diag_divergences_binary),
+      sum_ebfmi   = sum(diag_ebfmi_binary)
+      
     )  %>%
     ungroup() %>%
     select(-pop_rel_sd, -coverage_se) %>%
@@ -144,7 +147,7 @@ results_table_long = results_table %>%
       fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
     ) %>%
     fmt_number(
-      columns = c(n, n_items),
+      columns = c(n, n_items, sum_div, sum_ebfmi),
       decimals = 0
     ) %>%
     fmt_percent(
