@@ -36,6 +36,7 @@ sim_model = brms::brm(
   init    = .01,
   # prior = c(prior(constant(0.25), class = "b",  coef = "cond"),
   #           prior(constant(0.125), class = "sd", coef = "cond", group = "pps")),
+  adapt_delta = .95,
   backend = "cmdstanr",
   # threads = threading(4)
 )
