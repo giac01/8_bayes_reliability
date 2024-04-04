@@ -31,9 +31,12 @@ sim_sdt_binomial = function(
   sens_pps = rnorm(n_pps, mean = sens_mean, sd = sens_sigma)
   k_pps    = rnorm(n_pps, mean = k_mean,    sd = k_sigma)
   
-  if (!is.null(sens_pps_direct) | !is.null(k_pps_direct)){
-    sens_pps = sens_pps_direct
+  if (!is.null(k_pps_direct)){
     k_pps    = k_pps_direct
+  }
+  
+  if (!is.null(sens_pps_direct)){
+    sens_pps = sens_pps_direct
   }
   
   m1_pps = - sens_pps/2
