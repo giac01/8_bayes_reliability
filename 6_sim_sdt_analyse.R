@@ -111,13 +111,13 @@ results_table_long = results_table %>%
   rowid_to_column() %>%
   pivot_longer(cols = c(rmp_est,rmp_lb,rmp_ub, sh_est, sh_lb, sh_ub), names_to = c("name", ".value"), names_pattern = "(rmp|sh)_(.*)") 
 
-## Analysis of coverage/bias ---------------------------------------------------
+# Analysis of coverage/bias ---------------------------------------------------
 
   results_table_long %>%
-    group_by(n_items, sens_sigma, k_sigma, name) %>%       # aggregating over sample-sizes & sens_mean
+    group_by(n_items, sens_sigma, k_sigma, name, sample_sizes) %>%       # aggregating over sample-sizes & sens_mean
     mutate(
       difference = est - pop_rel,
-      ci_correct = (lb < pop_rel & ub > pop_rel),
+      ci_correct = (lb <= pop_rel & ub >= pop_rel),
       ci_length  = ub - lb
     ) %>%
     summarise(
@@ -128,7 +128,7 @@ results_table_long = results_table %>%
       mean        = mean(est),
       md          = mean(difference),
       mae         = mean(abs(difference)),
-      mse         = mean((difference)^2),
+      MSE         = mean((difference)^2),
       coverage    = length(which(ci_correct))/length(ci_correct),
       coverage_se = sqrt((coverage*(1-coverage))/n),
       coverage_lb = coverage - 1.96*coverage_se,
@@ -141,6 +141,7 @@ results_table_long = results_table %>%
     ungroup() %>%
     select(-pop_rel_sd, -coverage_se) %>%
     select(pop_rel_mean, everything()) %>%
+    arrange(sens_sigma, n_items, k_sigma, sample_sizes,name) %>%
     gt() %>%
     fmt(
       columns = where(is.numeric),
@@ -155,93 +156,145 @@ results_table_long = results_table %>%
       decimals = 1
     ) %>%
     cols_label(
-      # sample_sizes = "Sample Size",
-      # avg_cor2     ~ "{{:rho:_:theta:,x^2}}",
-      avg_cor2      ~ "$$\\overline{\\rho(\\theta, x)^2}$$",
+      sample_sizes ~ "{{n_obs}}",
+      n            ~ "{{n_sim}}",      # avg_cor2     ~ "{{:rho:_:theta:,x^2}}",
+      avg_cor2      ~ "{{mean[:rho:_:theta:,x^2 ]}}",
       pop_rel_mean ~ "{{R_pop}}",
-      sens_sigma   ~ "{{:sigma:_sens}}",
-      n_items      ~ "# Trials",
+      # sens_mean    ~ "{{:mu:_d'}}",
+      sens_sigma   ~ "{{:sigma:_di'}}",
+      k_sigma      ~ "{{:sigma:_:kappa:}}",
+      n_items      ~ "{{n_trials}}",
       md           ~ "bias",
-      mean_ci_length ~ "Mean Length"
+      mean_ci_length ~ "Mean Length",
+      name         ~ "Estimator"
       
     )  %>%
-    tab_spanner(label = "Simulation Parameters", columns = c(pop_rel_mean, sens_sigma, n_items, n)) %>%
-    tab_spanner(label = "Estimator Performance", columns = c(mean, mae, md)) %>%
+    tab_spanner(label = "Simulation Parameters", columns = c(pop_rel_mean, sens_sigma, n_items, k_sigma, n, sample_sizes,name)) %>%
+    tab_spanner(label = "Estimator Performance", columns = c(mean, mae, MSE, md)) %>%
     tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
     tab_footnote(
-      "{{R_pop}} = Simulated Population Reliability. mae = Mean Absolute Error. n = number of simulations. These results are averaged over the different sample sizes"
+      "{{R_pop}} = Simulated Population Reliability. MSE = Mean Squared Error. n = number of simulations. These results are averaged over the different sample sizes"
     ) %>%
     tab_style(
       style = cell_fill(color = "lightgray"),
       locations = cells_body(
         columns = everything(),
-        rows = which((n_items ==10 | n_items == 40))
+        rows = which((name == "rmp"))
       )
-    )
+    ) %>% 
+  gt::cols_hide(c(mae,avg_cor2))
 
   gtsave(filename = file.path("results","6_results_table_1.html"))
   
+  # 
+  # results_table_long %>%
+  #   group_by(n_items, sens_sigma, k_sigma, name, sample_sizes) %>%       # aggregating over sample-sizes & sens_mean
+  #   mutate(
+  #     difference = est - pop_rel,
+  #     ci_correct = (lb <= pop_rel & ub >= pop_rel),
+  #     ci_length  = ub - lb
+  #   ) %>%
+  #   summarise(
+  #     n = n(),
+  #     pop_rel_mean    = mean(pop_rel),
+  #     pop_rel_sd      = sd(pop_rel),
+  #     avg_cor2        = mean(true_score_cor2),
+  #     mean        = mean(est),
+  #     md          = mean(difference),
+  #     mae         = mean(abs(difference)),
+  #     MSE         = mean((difference)^2),
+  #     coverage    = length(which(ci_correct))/length(ci_correct),
+  #     coverage_se = sqrt((coverage*(1-coverage))/n),
+  #     coverage_lb = coverage - 1.96*coverage_se,
+  #     coverage_ub = coverage + 1.96*coverage_se,
+  #     mean_ci_length = mean(ci_length),
+  #     sum_div     = sum(diag_divergences_binary),
+  #     sum_ebfmi   = sum(diag_ebfmi_binary)
+  #     
+  #   )  %>%
+  #   ungroup() %>%
+  #   select(-pop_rel_sd, -coverage_se) %>%
+  #   select(pop_rel_mean, everything()) %>%
+  #   gt() %>%
+  #   fmt(
+  #     columns = where(is.numeric),
+  #     fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
+  #   ) %>%
+  #   fmt_number(
+  #     columns = c(n, n_items, sum_div, sum_ebfmi),
+  #     decimals = 0
+  #   ) %>%
+  #   fmt_percent(
+  #     columns = starts_with("coverage"),
+  #     decimals = 1
+  #   ) %>%
+  #   cols_label(
+  #     sample_sizes ~ "{{n_obs}}",
+  #     n            ~ "{{n_sim}}",
+  #     # avg_cor2     ~ "{{:rho:_:theta:,x^2}}",
+  #     avg_cor2      ~ "{{mean[:rho:_:theta:,x^2 ]}}",
+  #     pop_rel_mean ~ "{{R_pop}}",
+  #     # sens_mean    ~ "{{:mu:_d'}}",
+  #     sens_sigma   ~ "{{:sigma:_di'}}",
+  #     k_sigma      ~ "{{:sigma:_:kappa:}}",
+  #     n_items      ~ "# Trials",
+  #     md           ~ "bias",
+  #     mean_ci_length ~ "Mean Length",
+  #     name         ~ "Estimator"
+  #   )  %>%
+  #   tab_spanner(label = "Simulation Parameters", columns = c(pop_rel_mean, sens_sigma, n_items, k_sigma, n, sample_sizes,name)) %>%
+  #   tab_spanner(label = "Estimator Performance", columns = c(mean, mae, MSE, md)) %>%
+  #   tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
+  #   tab_footnote(
+  #     "{{R_pop}} = Simulated Population Reliability. MSE = Mean Squared Error. n = number of simulations. These results are averaged over the different sample sizes"
+  #   ) %>%
+  #   tab_style(
+  #     style = cell_fill(color = "lightgray"),
+  #     locations = cells_body(
+  #       columns = everything(),
+  #       rows = which((n_items ==10 | n_items == 40))
+  #     )
+  #   ) %>%
+  #   gt::cols_hide(c(mae,avg_cor2))
+  # 
+  # 
+  #   gtsave(filename = file.path("results","6_results_table_2.html"))
   
-  results_table_long %>%
-    group_by(sample_sizes, n_items, sens_sigma, k_sigma, name, sens_mean) %>%
-    mutate(
-      difference = est - pop_rel,
-      ci_correct = (lb < pop_rel & ub > pop_rel),
-      ci_length  = ub - lb
-    ) %>%
-    summarise(
-      n = n(),
-      pop_rel_mean         = mean(pop_rel),
-      pop_rel_sd      = sd(pop_rel),
-      mean     = mean(est),
-      md       = mean(difference),
-      mae      = mean(abs(difference)),
-      coverage = length(which(ci_correct))/length(ci_correct),
-      coverage_se = sqrt((coverage*(1-coverage))/n),
-      coverage_lb = coverage - 1.96*coverage_se,
-      coverage_ub = coverage + 1.96*coverage_se,
-      mean_ci_length = mean(ci_length)
-    )  %>%
-    ungroup() %>%
-    select(-pop_rel_sd, -coverage_se) %>%
-    select(pop_rel_mean, everything()) %>%
-    gt() %>%
-    fmt(
-      columns = where(is.numeric),
-      fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
-    ) %>%
-    fmt_number(
-      columns = c(n, n_items),
-      decimals = 0
-    ) %>%
-    fmt_percent(
-      columns = starts_with("coverage"),
-      decimals = 1
-    ) %>%
-    cols_label(
-      sample_sizes = "Sample Size",
-      pop_rel_mean ~ "{{R_pop}}",
-      # sens_sigma   ~ "{{:sigma:_sens}}",
-      n_items      ~ "# Trials",
-      md           ~ "bias",
-      mean_ci_length ~ "Mean Length"
-    )  %>%
-    tab_spanner(label = "Simulation Parameters", columns = c(pop_rel_mean, n_items, n, sample_sizes)) %>%
-    tab_spanner(label = "Estimator Performance", columns = c(mean, mae, md)) %>%
-    tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
-    tab_footnote(
-      md("{{R_pop}} = Simulated Population Reliability. mae = Mean Absolute Error. n = number of simulations. These results are averaged over the different sample sizes"
-    )) %>%
-    tab_style(
-      style = cell_fill(color = "lightgray"),
-      locations = cells_body(
-        columns = everything(),
-        rows = which((sample_sizes ==100 | sample_sizes == 1000))
+# Comparison of split half and RMP ---------------------------------------------
+    
+   # Comparison of CI lengths
+    
+    results_table_splithalfcomp = results_table %>%
+      mutate(length_ratio = rmp_ci_length/sh_ci_length)
+    
+    results_table$sh_ci_length %>% hist()
+    results_table$rmp_ci_length %>% hist()
+    
+    results_table_splithalfcomp$length_ratio %>% median()    # there are some weird issues with some sh_ci_lengths being negative!!
+    
+    results_table
+    
+  # Relative increase in precision 
+    
+    results_table_precision = results_table %>%
+      mutate(
+        rmp_diff = rmp_est - pop_rel,
+        sh_diff  = sh_est  - pop_rel
+             ) %>%
+      group_by(n_items, sens_sigma, k_sigma, sample_sizes) %>%
+      summarise(
+        n_sim        = n(),
+        rmp_diff_var = var(rmp_diff),
+        sh_diff_var  = var(sh_diff)
+                ) %>%
+      mutate(
+        relative_precision = 100*(rmp_diff_var/sh_diff_var-1)
       )
-    ) %>%
-    gtsave(filename = file.path("results","6_results_table_2.html"))
-  
-
+    
+    results_table_precision
+    
+    
+head(results_table_precision)
 # Plots ------------------------------------------------------------------------
   
   results_table_long %>%

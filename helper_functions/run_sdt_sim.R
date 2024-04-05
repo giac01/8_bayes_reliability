@@ -193,7 +193,11 @@
     )
 
   results[["cor_bayes_estimate_true"]] = cor.test(mod0_sens_estimates$cond, dat$sens_pps)
-  results[["rmp"]] = calc_r_brms_sdt(internal_results)
+  
+  rmp_calc = calc_r_brms_sdt(internal_results)
+  
+  results[["rmp"]] = rmp_calc$hdci
+  results[["rmp_pd"]] = rmp_calc$pd
   
   results[["mean(sens_pps)"]] = mean(dat$sens_pps)
   
