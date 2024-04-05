@@ -24,7 +24,9 @@ calc_r_brms_sdt = function(
   
   cors = sapply(1:length(draws_wide_1), function(i) cor(draws_wide_1[,i],draws_wide_2[,i]))
   
-  cors_hcdi = ggdist::mean_hdci(cors)
+  hdci = ggdist::mean_hdci(cors)
   
-  return(cors_hcdi)
+  pd = bayestestR::p_direction(cors)$pd
+  
+  return(list(hdci = hdci, pd = pd))
 }
