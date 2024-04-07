@@ -14,7 +14,7 @@ list.files(file.path("helper_functions"), pattern = "\\.R$", full.names = TRUE) 
 
 # Compile stan model -----------------------------------------------------------
 
-mod <- cmdstan_model(file.path("helper_functions","stan_factor_model_v8.stan"))
+mod <- cmdstan_model(file.path("stan_models","stan_equiv_factor_model_v3.stan"))
 
 # Create Parameter Table ---------------------------------------------------
 
@@ -29,7 +29,7 @@ params_list <- expand.grid(
   tau_equivalence = c(TRUE),
   sample_sizes = c(50, 100, 500, 2000),
   n_items = c(3, 6, 12),
-  run_rep = 1:200  # 1 rep takes about 5 minutes (100 took 8.3 hours)
+  run_rep = 1:250  # 1 rep takes about 5 minutes (100 took 8.3 hours)
 ) 
 
 params_list$loadings_set = count_so_far(params_list$sample_sizes)
@@ -45,9 +45,6 @@ for(i in 1:max(params_list$loadings_set)){
   if (length(unique(x$n_items)) !=1 ) {stop("ERROR")}
   if (length(unique(x$tau_equivalence)) !=1 ) {stop("ERROR")}
   
-  # if (unique(x$tau_equivalence)==TRUE)   { loadings_list[[i]] = rep(runif(1,.01,.99), unique(x$n_items)) }
-  # if (unique(x$tau_equivalence)==FALSE)  { loadings_list[[i]]  = runif(unique(x$n_items), .01, .99) }
-  
   if (unique(x$tau_equivalence)==TRUE)   { loadings_list[[i]]  = rep(rbeta(1, 1, 1.9), unique(x$n_items)) }
   if (unique(x$tau_equivalence)==FALSE)  { loadings_list[[i]]  = rbeta(unique(x$n_items), 1, 1.9) }
 }
@@ -57,10 +54,11 @@ params_list = params_list %>%
 
 saveRDS(params_list, file = file.path("results","5_params_list_a.rds"))
 
-
 # Run code in parallel using future --------------------------------------------
 
-future::plan(future::multisession(workers = 8))
+print(availableCores(logical = TRUE))
+
+future::plan(future::multisession(workers = availableCores()))
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), function(i) {
@@ -69,7 +67,8 @@ results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), fu
     n = params_list$sample_sizes[i], 
     n_items = params_list$n_items[i], 
     loadings = loadings_list[[params_list$loadings_set[i]]],
-    h_ci_calc = FALSE
+    h_ci_calc = FALSE,
+    use_init = FALSE
   )
 }
 )
@@ -79,7 +78,12 @@ time_b - time_a
 
 future::plan(future::sequential())
 
-# save(results, file = file.path("results","4_results_tauinequiv_d.Rdata"))
-saveRDS(results, file = file.path("results","5_results_a.rds"))
+# Save results 
+
+timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
+filename <- sprintf("5_results_tauequiv_%s.rds", timestamp)
+saveRDS(results, file = file.path("results", filename))
+
+
 
 

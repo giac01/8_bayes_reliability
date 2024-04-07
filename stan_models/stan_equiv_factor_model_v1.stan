@@ -9,7 +9,7 @@ data {
 }
 
 parameters {
-  vector[pps_n] theta;                      // true scores 
+  vector[pps_n] theta;            // true scores 
   real<lower=0, upper=1> lambda;  // loadings
 }
 
