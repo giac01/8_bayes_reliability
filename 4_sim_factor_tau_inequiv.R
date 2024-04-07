@@ -26,7 +26,7 @@ list.files(file.path("helper_functions"), pattern = "\\.R$", full.names = TRUE) 
 
 # Compile stan model -----------------------------------------------------------
 
-mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v4.stan"))
+mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v5.stan"))
 
 # Create Parameter Table ---------------------------------------------------
 
