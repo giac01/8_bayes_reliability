@@ -99,7 +99,6 @@ run_factor_sim_2 = function(
   out[["diagnostics_treedepth"]] =  sum(diagnostics$num_max_treedepth)
   out[["diagnostics_ebfmi"]] = diagnostics$ebfmi
 
-  # out[["model_results"]] = 
   out[["r_est"]] = calc_r_stan_m2(internal_results)
   
   if (additional_tests==TRUE){
