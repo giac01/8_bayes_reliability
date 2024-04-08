@@ -51,7 +51,7 @@ params_list <- expand.grid(
   sample_sizes = c( 200, 500, 1000),
  # sample_sizes = c( 100),
   n_items = c(10, 20, 40),
-  run_rep = 1:250  # 1 rep takes about 5 minutes (100 took 8.3 hours)
+  run_rep = 1:400  # 1 rep takes about 5 minutes (100 took 8.3 hours)
 ) # 8100 obs in 
 
 saveRDS(params_list, file = file.path("results","6_params_list_c.rds"))
@@ -61,7 +61,7 @@ saveRDS(params_list, file = file.path("results","6_params_list_c.rds"))
 future::plan(future::multisession(workers = availableCores()))
 
 time_a = Sys.time()
-results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), function(i) {
+results <- future.apply::future_lapply(future.seed = FALSE, 1:nrow(params_list), function(i) {
   run_sdt_sim(
     i = i,
     sens_mean  = params_list$sens_mean[i],
