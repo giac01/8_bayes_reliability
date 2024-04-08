@@ -29,8 +29,10 @@ params_list <- expand.grid(
   tau_equivalence = c(TRUE),
   sample_sizes = c(50, 100, 500, 2000),
   n_items = c(3, 6, 12),
-  run_rep = 1:250  # 1 rep takes about 5 minutes (100 took 8.3 hours)
+  run_rep = 1:400
 ) 
+
+# 250 reps took 3 hours and 25 minuntes 
 
 params_list$loadings_set = count_so_far(params_list$sample_sizes)
 
@@ -68,7 +70,8 @@ results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), fu
     n_items = params_list$n_items[i], 
     loadings = loadings_list[[params_list$loadings_set[i]]],
     h_ci_calc = FALSE,
-    use_init = FALSE
+    use_init = FALSE,
+    additional_tests = TRUE
   )
 }
 )

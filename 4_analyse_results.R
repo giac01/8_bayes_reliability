@@ -23,27 +23,26 @@ loadings_list_pretty =  lapply(loadings_list, function(x) paste0(gbtoolbox::apa_
 loadings_list_pretty2 = lapply(loadings_list, function(x) paste0("Loadings:", paste0(gbtoolbox::apa_num(x, n_decimal_places = 1), collapse = ", "))) %>% unlist()
 loadings_list_pretty
 loadings_list_pretty2
+
 # I ran the simulation code multiple times on the cluster, so we have several results files we want to join
 
 results_path = file.path("results","4_factor_inequivalent_results")
 results_files = list.files(results_path, 
                            pattern = "^4_results_tauinequiv_",
+                           recursive = FALSE,
                            full.names = TRUE
                            )
 results = lapply(results_files, function(x) readRDS(x))
-results = unlist(results, recursive = FALSE)
 
-
-# params_list = readRDS(file = file.path("results","4_params_list_aa.rds"))
-
-# params_list %>%
-#   filter(run_rep ==1)
+results = results[[1]]
+# results = unlist(results)
 
 ## Create results table for simulation results ---------------------------------
 
 results_table = data.frame(i = 1:length(results))
 
-results_table$n               = sapply(1:nrow(results_table), function(i) results[[i]]$settings$n )
+
+results_table$n    = sapply(1:nrow(results_table), function(i) results[[i]]$settings$n )
 results_table$sample_sizes    = sapply(1:nrow(results_table), function(i) results[[i]]$settings$n )
 
 results_table$n_items         = sapply(1:nrow(results_table), function(i) results[[i]]$settings$n_items )
@@ -54,8 +53,8 @@ results_table$loading_list_pretty2 = loadings_list_pretty2[results_table$loading
 results_table$intercepts      = sapply(1:nrow(results_table), function(i) results[[i]]$settings$intercepts )
 
 results_table$pop_rel         = sapply(results, function(x) x$population_reliability) %>% as.numeric()
-results_table$pop_ss_loading  =  sapply(results, function(x) sum(x$settings$loadings^2)) %>% as.numeric()
-results_table$sec_min_loading =  sapply(results, function(x) sort(x$settings$loadings, decreasing = TRUE)[2]) %>% as.numeric()
+results_table$pop_ss_loading  = sapply(results, function(x) sum(x$settings$loadings^2)) %>% as.numeric()
+results_table$sec_min_loading = sapply(results, function(x) sort(x$settings$loadings, decreasing = TRUE)[2]) %>% as.numeric()
 results_table$third_min_loading =  sapply(results, function(x) sort(x$settings$loadings, decreasing = TRUE)[3]) %>% as.numeric()
 
 results_table$rmp_est         = sapply(results, function(x) x$r_est[1] )%>% as.numeric()
@@ -68,8 +67,6 @@ results_table$h_est           = sapply(results, function(x) x$h_reliability$r)%>
 results_table$h_lb            = sapply(results, function(x) x$h_reliability$ci[1])%>% as.numeric()
 results_table$h_ub            = sapply(results, function(x) x$h_reliability$ci[2])%>% as.numeric()
 # results_table$h_ci_contain    = (results_table$pop_rel > results_table$h_lb) & (results_table$pop_rel < results_table$h_ub) 
-
-# results[[10]]$true_score_model_score_cor$estimate^2
 
 # Other coverage statistics
 
@@ -87,9 +84,9 @@ results_table$diag_ebfmi_binary = as.numeric(results_table$diag_ebfmi>0)
 # Performance Measuers
 # results_table$rel_diff =  results_table$rel_est - results_table$pop_rel 
 
-# Results Table-----------------------------------------------------------------
+# Results Table -----------------------------------------------------------------
 results_table_long = results_table %>%
-  select(-any_of(c(starts_with("diag")))) %>%
+  # select(-any_of(c(starts_with("diag")))) %>%
   rowid_to_column() %>%
   pivot_longer(cols = c(rmp_est, h_est, rmp_lb, h_lb, rmp_ub, h_ub), names_to = c("name", ".value"), names_pattern = "(rmp|h)_(.*)") 
 
@@ -99,25 +96,31 @@ results_table_cleaned =  results_table_long %>%
   group_by( loading_set, sample_sizes, name) %>%
   mutate(
     difference = est - pop_rel,
-    ci_correct = (lb < pop_rel & ub > pop_rel),
+    ci_correct = (lb <= pop_rel & ub >= pop_rel),
     ci_length  = ub - lb
   ) %>%
   summarise(
-    pop_rel  = mean(pop_rel),
-    pop_rel_sd = sd(pop_rel, na.rm = TRUE),
-    n = n(),
-    mean     = mean(est),
-    mean_se  = sd(est)/sqrt(n),
-    mean_lb  = mean - 1.96*mean_se,
-    mean_ub  = mean + 1.96*mean_se,
-    md       = mean(difference),
-    mad      = mean(abs(difference)),
-    coverage = length(which(ci_correct))/length(ci_correct),
+    pop_rel     = mean(pop_rel),
+    pop_rel_sd  = sd(pop_rel, na.rm = TRUE),
+    n           = n(),
+    mean        = mean(est),
+    mean_se     = sd(est)/sqrt(n),
+    mean_lb     = mean - qnorm(0.975)*mean_se,
+    mean_ub     = mean + qnorm(0.975)*mean_se,
+    bias        = mean(difference),
+    bias_se     = sqrt(1/(n*(n-1))*sum((est-mean)^2)),
+    bias_lb     = bias - qnorm(0.975)*bias_se,
+    bias_ub     = bias + qnorm(0.975)*bias_se,
+    mad         = mean(abs(difference)),
+    MSE         = mean((difference)^2),
+    coverage    = length(which(ci_correct))/length(ci_correct),
     coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
+    coverage_lb = coverage - qnorm(0.975)*coverage_se,
+    coverage_ub = coverage + qnorm(0.975)*coverage_se,
     mean_ci_length = mean(ci_length),
-    `Mean True Score Coverage` = mean(true_score_coverage)
+    `Mean True Score Coverage` = mean(true_score_coverage),
+    perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
+    perc_diag_ebfmi_binary       = sum(diag_ebfmi_binary)/n
   ) %>%
   ungroup() %>%
   mutate(
@@ -125,10 +128,15 @@ results_table_cleaned =  results_table_long %>%
     loadings_list_pretty2 = loadings_list_pretty2[loading_set]
   )
 
+results_table_cleaned[which(results_table_cleaned$name=="h"),c("perc_diag_divergences_binary","perc_diag_ebfmi_binary")] = NA
+
 results_table_cleaned %>%
-  # arrange(desc(coverage)) %>%
-  select(-coverage_se) %>%
-  # filter(name == "rmp") %>%
+  select(-coverage_se, -loading_set, - pop_rel_sd, 
+         -loadings_list_pretty2, -mad,
+         -mean, -mean_se, -mean_ub, -mean_lb,
+         -bias_se
+         ) %>%
+  filter(name == "rmp") %>%
   gt() %>%
   gt::cols_move_to_start(name) %>%
   fmt(
@@ -140,96 +148,107 @@ results_table_cleaned %>%
     decimals = 0
   ) %>%
   fmt_percent(
-    columns = starts_with("coverage"),
+    columns = c(starts_with("coverage"),contains("perc_diag")),
     decimals = 1
   ) %>%
   cols_label(
-    sample_sizes ~ "Sample Size",
-    # constained_loadings ~ "Loadings Constrained",
-    # pop_rel_mean ~ "{{R_pop}}",
-    # sens_sigma   ~ "{{:sigma:_sens}}",
-    # n_items      ~ "# Items",
-    md           ~ "bias",
-    mean_ci_length ~ "Mean Length"
-    
+    pop_rel      ~ "R",
+    loadings_list_pretty ~ "Loadings",
+    sample_sizes ~ "{{n_obs}}",
+    n            ~ "{{n_sim}}",
+    bias           ~ "bias",
+    mean_ci_length ~ "Mean Length",
+    coverage_lb  ~ "LB",
+    coverage_ub  ~ "UB",
+    bias_lb  ~ "LB",
+    bias_ub  ~ "UB",
+    perc_diag_divergences_binary ~ "% Divergent Transitions",
+    perc_diag_ebfmi_binary ~  "% Low E-BFMI"
   )  %>%
-  tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n)) %>%
-  tab_spanner(label = "Estimator Performance", columns = c(mean, mad, md)) %>%
+  
+  tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
+  tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
+  tab_spanner(label = "Simulation Parameters", columns = c(pop_rel, loadings_list_pretty,sample_sizes, n)) %>%
+  tab_spanner(label = "Estimator Performance", columns = c( bias, bias_lb, bias_ub, MSE)) %>%
   tab_spanner(label = "Confidence/Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   tab_footnote(
-    "{{R_pop}} = Simulated Population Reliability. mae = Mean Absolute Error. n = number of simulations. These results are averaged over the different sample sizes"
+    "R = population reliability. MSE = Mean Squared Error. Mean Length = Mean length of credible/confidence interval. "
   ) %>%
-  tab_style(
-    style = cell_fill(color = "lightgray"),
-    locations = cells_body(
-      columns = everything(),
-      # rows = which((n_items ==10 | n_items == 40))
-      rows = which(name == "rmp")
-    )
-  ) 
+  # tab_style(
+  #   style = cell_fill(color = "lightgray"),
+  #   locations = cells_body(
+  #     columns = everything(),
+  #     # rows = which((sample_sizes ==200 | sample_sizes == 2000))
+  #     rows = which(name == "rmp")
+  #   )
+  # ) %>%
+  gt::cols_hide(c(name)) %>%
+
+
+gtsave(filename = file.path("results","4_table_A.html"))
 
 ### Smaller table with fewer comparisons ---------------------------------------
-
-results_table_long %>%
-  group_by( sample_sizes, n_items, name) %>%
-  mutate(
-    difference = est - pop_rel,
-    ci_correct = (lb < pop_rel & ub > pop_rel),
-    ci_length  = ub - lb
-  ) %>%
-  summarise(
-    n = n(),
-    mean     = mean(est),
-    md       = mean(difference),
-    mad      = mean(abs(difference)),
-    coverage = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
-    mean_ci_length = mean(ci_length),
-    `Mean True Score Coverage` = mean(true_score_coverage)
-  ) %>%
-  ungroup() %>%
-  # arrange(desc(coverage)) %>%
-  filter(name !="h") %>%
-  select(-coverage_se, -name) %>%
-  gt() %>%
-  # gt::cols_move_to_start(name) %>%
-  fmt(
-    columns = where(is.numeric),
-    fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
-  ) %>%
-  fmt_number(
-    columns = starts_with("n"),
-    decimals = 0
-  ) %>%
-  fmt_percent(
-    columns = starts_with("coverage"),
-    decimals = 1
-  ) %>%
-  cols_label(
-    sample_sizes ~ "Sample Size",
-    # constained_loadings ~ "Loadings Constrained",
-    # pop_rel_mean ~ "{{R_pop}}",
-    # sens_sigma   ~ "{{:sigma:_sens}}",
-    # n_items      ~ "# Items",
-    md           ~ "bias",
-    mean_ci_length ~ "Mean Length"
-    
-  )  %>%
-  tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n)) %>%
-  tab_spanner(label = "Estimator Performance", columns = c(mean, mad, md)) %>%
-  tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
-  tab_footnote(
-    "{{R_pop}} = Simulated Population Reliability. mae = Mean Absolute Error. n = number of simulations. These results are averaged over the different sample sizes"
-  ) %>%
-  tab_style(
-    style = cell_fill(color = "lightgray"),
-    locations = cells_body(
-      columns = everything(),
-      rows = which((n_items ==10 | n_items == 40))
-    )
-  ) 
+# 
+# results_table_long %>%
+#   group_by( sample_sizes, n_items, name) %>%
+#   mutate(
+#     difference = est - pop_rel,
+#     ci_correct = (lb < pop_rel & ub > pop_rel),
+#     ci_length  = ub - lb
+#   ) %>%
+#   summarise(
+#     n = n(),
+#     mean     = mean(est),
+#     bias       = mean(difference),
+#     mad      = mean(abs(difference)),
+#     coverage = length(which(ci_correct))/length(ci_correct),
+#     coverage_se = sqrt((coverage*(1-coverage))/n),
+#     coverage_lb = coverage - qnorm(0.975)*coverage_se,
+#     coverage_ub = coverage + qnorm(0.975)*coverage_se,
+#     mean_ci_length = mean(ci_length),
+#     `Mean True Score Coverage` = mean(true_score_coverage)
+#   ) %>%
+#   ungroup() %>%
+#   # arrange(desc(coverage)) %>%
+#   filter(name !="h") %>%
+#   select(-coverage_se, -name) %>%
+#   gt() %>%
+#   # gt::cols_move_to_start(name) %>%
+#   fmt(
+#     columns = where(is.numeric),
+#     fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
+#   ) %>%
+#   fmt_number(
+#     columns = starts_with("n"),
+#     decimals = 0
+#   ) %>%
+#   fmt_percent(
+#     columns = starts_with("coverage"),
+#     decimals = 1
+#   ) %>%
+#   cols_label(
+#     sample_sizes ~ "Sample Size",
+#     # constained_loadings ~ "Loadings Constrained",
+#     # pop_rel_mean ~ "{{R_pop}}",
+#     # sens_sigma   ~ "{{:sigma:_sens}}",
+#     # n_items      ~ "# Items",
+#     bias           ~ "bias",
+#     mean_ci_length ~ "Mean Length"
+#     
+#   )  %>%
+#   tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n)) %>%
+#   tab_spanner(label = "Estimator Performance", columns = c(mean, mad, bias)) %>%
+#   tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
+#   tab_footnote(
+#     "{{R_pop}} = Simulated Population Reliability. mae = Mean Absolute Error. n = number of simulations. These results are averaged over the different sample sizes"
+#   ) %>%
+#   tab_style(
+#     style = cell_fill(color = "lightgray"),
+#     locations = cells_body(
+#       columns = everything(),
+#       rows = which((n_items ==10 | n_items == 40))
+#     )
+#   ) 
 
 ## Plots -----------------------------------------------------------------------
 
@@ -258,6 +277,7 @@ results_table_cleaned %>%
 
 results_table_cleaned %>%
   ggplot(aes(y = mean, ymin = mean_lb, ymax = mean_ub, x = sample_sizes, col = name)) +
+  geom_point() +
   geom_errorbar(size = 2) +  
   geom_hline(aes(yintercept = pop_rel)) +
   jtools::theme_apa() +
@@ -266,7 +286,7 @@ results_table_cleaned %>%
   coord_cartesian(ylim = c(0,1)) +
   facet_wrap(~ loadings_list_pretty2) 
 
-##### Using ordinal data -------------------------------------------------------
+##### Using raw data ----------------------------------------------------------
 
 results_table_long  %>%
   ggplot(aes(y = est, x = sample_sizes, col = name)) +
@@ -287,7 +307,7 @@ results_table_long  %>%
     # legend.margin = margin(6, 6, 6, 6)
   )
 
-ggsave(file.path("plots","4_rawdata_plot.png"), width = 7.5, height = 7.5)
+ggsave(file.path("plots","4_rawdata_plot.png"), width = 8, height = 7.5)
 
 colnames(results_table_long)
 ## Do models without model fit issues fit better ?? ----------------------------
@@ -398,12 +418,12 @@ results_table_long %>%
   ) %>%
   summarise(
     n = n(),
-    md       = mean(difference),
+    bias       = mean(difference),
     mad      = mean(abs(difference)),
     coverage = length(which(ci_correct))/length(ci_correct),
     coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
+    coverage_lb = coverage - qnorm(0.975)*coverage_se,
+    coverage_ub = coverage + qnorm(0.975)*coverage_se,
     mean_ci_length = mean(ci_length)
   )
 
@@ -422,12 +442,12 @@ results_table_long %>%
   ) %>%
   summarise(
     n = n(),
-    md       = mean(difference),
+    bias       = mean(difference),
     mad      = mean(abs(difference)),
     coverage = length(which(ci_correct))/length(ci_correct),
     coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
+    coverage_lb = coverage - qnorm(0.975)*coverage_se,
+    coverage_ub = coverage + qnorm(0.975)*coverage_se,
     mean_ci_length = mean(ci_length)
   )
 
@@ -446,11 +466,11 @@ results_table_long %>%
   summarise(
     n = n(),
     mad      = mean(abs(difference)),
-    md       = mean(difference),
+    bias       = mean(difference),
     coverage = length(which(ci_correct))/length(ci_correct),
     coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
+    coverage_lb = coverage - qnorm(0.975)*coverage_se,
+    coverage_ub = coverage + qnorm(0.975)*coverage_se,
     mean_ci_length = mean(ci_length)
   )
 
@@ -507,7 +527,7 @@ results_table %>%
   group_by(sample_sizes, tau_equivalence) %>%
   summarise(
     mad      = mean(abs(rmp_diff)),
-    md       = mean((rmp_diff)),
+    bias       = mean((rmp_diff)),
     coverage = length(which(ci_contain))/length(ci_contain),
     mean_ci_length = mean(rel_ci_length),
     n = n()
@@ -560,7 +580,7 @@ results_table %>%
   group_by(sample_sizes, tau_equivalence) %>%
   summarise(
     mad      = mean(abs(rel_diff)),
-    md       = mean((rel_diff)),
+    bias       = mean((rel_diff)),
     coverage = length(which(ci_contain))/length(ci_contain),
     mean_ci_length = mean(rel_ci_length),
     n = n()

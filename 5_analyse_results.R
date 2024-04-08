@@ -6,37 +6,49 @@ rm(list = ls(all.names = TRUE))
 
 # Load Data --------------------------------------------------------------------
 
-results     = readRDS(file = file.path("results","5_results_a.rds"))
-params_list = readRDS(file = file.path("results","5_params_list_a.rds"))
+results_path = file.path("results","5_factor_tauequivalent_results")
 
+results_files = list.files(results_path, 
+                           pattern = "^5_results_tauequiv_",
+                           recursive = FALSE,
+                           full.names = TRUE
+)
+results = lapply(results_files, function(x) readRDS(x))
+
+results = results[[1]]
+
+# params_list = readRDS(file = file.path("results","5_params_list_a.rds"))
 
 ## Create results table for simulation results ---------------------------------
 
-results_table = params_list
+results_table = data.frame(i = 1:length(results))
 
-# results_table = data.frame(sample_size = as.numeric(sapply(results, function(x) x$settings$n)))
-# results_table$n_items         = sapply(results, function(x) x$settings$n_items) %>% as.numeric()
-# results_table$n_items         = sapply(results, function(x) x$settings$n_items) %>% as.numeric()
+results_table$n    = sapply(1:nrow(results_table), function(i) results[[i]]$settings$n )
+results_table$sample_sizes    = sapply(1:nrow(results_table), function(i) results[[i]]$settings$n )
+
+results_table$n_items         = sapply(1:nrow(results_table), function(i) results[[i]]$settings$n_items )
+
 
 results_table$pop_rel         = sapply(results, function(x) x$population_reliability) %>% as.numeric()
-results_table$pop_ss_loading  =  sapply(results, function(x) sum(x$settings$loadings^2)) %>% as.numeric()
-results_table$sec_min_loading =  sapply(results, function(x) sort(x$settings$loadings, decreasing = TRUE)[2]) %>% as.numeric()
+results_table$pop_ss_loading  = sapply(results, function(x) sum(x$settings$loadings^2)) %>% as.numeric()
+results_table$sec_min_loading = sapply(results, function(x) sort(x$settings$loadings, decreasing = TRUE)[2]) %>% as.numeric()
 results_table$third_min_loading =  sapply(results, function(x) sort(x$settings$loadings, decreasing = TRUE)[3]) %>% as.numeric()
 
-results_table$mrp_est         = sapply(results, function(x) x$r_est[1] )%>% as.numeric()
-results_table$mrp_lb          = sapply(results, function(x) x$r_est[2]) %>% as.numeric()
-results_table$mrp_ub          = sapply(results, function(x) x$r_est[3]) %>% as.numeric()
-results_table$mrp_ci_length   = results_table$mrp_ub - results_table$mrp_lb
-results_table$true_score_cor2 = sapply(results, function(x) x$true_score_cor) %>% as.numeric()
-# results_table$mrp_ci_contain  = (results_table$pop_rel > results_table$mrp_lb) & (results_table$pop_rel < results_table$mrp_ub) 
+results_table$rmp_est         = sapply(results, function(x) x$r_est[1] )%>% as.numeric()
+results_table$rmp_lb          = sapply(results, function(x) x$r_est[2]) %>% as.numeric()
+results_table$rmp_ub          = sapply(results, function(x) x$r_est[3]) %>% as.numeric()
+results_table$rmp_ci_length   = results_table$rmp_ub - results_table$rmp_lb
 
 results_table$a_est           = sapply(results, function(x) x$alpha_reliability$est)%>% as.numeric()
 results_table$a_lb            = sapply(results, function(x) x$alpha_reliability$ci.lower)%>% as.numeric()
 results_table$a_ub            = sapply(results, function(x) x$alpha_reliability$ci.upper)%>% as.numeric()
-# results_table$h_ci_contain    = (results_table$pop_rel > results_table$h_lb) & (results_table$pop_rel < results_table$h_ub) 
 
-# results_table$true_score_cor2 = as.numeric(results_table$true_score_cor)
+# Other coverage statistics
 
+results_table$true_score_cor2              = sapply(results, function(x) x$true_score_cor$estimate^2) %>% as.numeric()
+# results_table$true_score_coverage          = sapply(results, function(x) x$true_score_coverage)%>% as.numeric()
+results_table$true_score_factor_score_cor2 = sapply(results, function(x) x$true_score_factor_score_cor$estimate^2)%>% as.numeric()   # This is the NON-SQUARED CORRELATION CURRENTLY - SHOULD CHANGE!
+results_table$true_score_model_score_cor2  = sapply(results, function(x) x$true_score_model_score_cor$estimate^2)%>% as.numeric()
 
 results_table$sample_sizes = factor(results_table$sample_sizes)
 results_table$diag_divergences = sapply(results, function(x) x$diagnostics_divergences) %>% as.numeric()
@@ -47,314 +59,112 @@ results_table$diag_ebfmi_binary = as.numeric(results_table$diag_ebfmi>0)
 # Performance Measuers
 # results_table$rel_diff =  results_table$rel_est - results_table$pop_rel 
 
-# Results Table-----------------------------------------------------------------
-
+# Results Table -----------------------------------------------------------------
 results_table_long = results_table %>%
-  select(-any_of(c(starts_with("diag"),starts_with("true")))) %>%
-  select(-loadings_set) %>%
+  # select(-any_of(c(starts_with("diag")))) %>%
   rowid_to_column() %>%
-  pivot_longer(cols = c(mrp_est, a_est, mrp_lb, a_lb, mrp_ub, a_ub), names_to = c("name", ".value"), names_pattern = "(mrp|a)_(.*)") 
+  pivot_longer(cols = c(rmp_est, a_est, rmp_lb, a_lb, rmp_ub, a_ub), names_to = c("name", ".value"), names_pattern = "(rmp|a)_(.*)") 
 
-## Comparison between MRP and ALPHA ------------------------------------------------
+## Comparison between RMP and H ------------------------------------------------
 
-results_table_long %>%
-  # filter(pop_rel>.3 & pop_rel <.8) %>%
-  # filter(diag_ebfmi==0) %>%
-  group_by( sample_sizes, n_items, name) %>%
+results_table_cleaned =  results_table_long %>%
+  group_by(n_items, sample_sizes, name) %>%
   mutate(
     difference = est - pop_rel,
-    ci_correct = (lb < pop_rel & ub > pop_rel),
+    ci_correct = (lb <= pop_rel & ub >= pop_rel),
     ci_length  = ub - lb
   ) %>%
   summarise(
-    n = n(),
-    mae      = mean(abs(difference)),
-    md       = mean(difference),
-    coverage = length(which(ci_correct))/length(ci_correct),
+    pop_rel     = mean(pop_rel),
+    pop_rel_sd  = sd(pop_rel, na.rm = TRUE),
+    n           = n(),
+    mean        = mean(est),
+    mean_se     = sd(est)/sqrt(n),
+    mean_lb     = mean - qnorm(0.975)*mean_se,
+    mean_ub     = mean + qnorm(0.975)*mean_se,
+    bias        = mean(difference),
+    bias_se     = sqrt(1/(n*(n-1))*sum((est-mean)^2)),
+    bias_lb     = bias - qnorm(0.975)*bias_se,
+    bias_ub     = bias + qnorm(0.975)*bias_se,
+    mad         = mean(abs(difference)),
+    MSE         = mean((difference)^2),
+    coverage    = length(which(ci_correct))/length(ci_correct),
     coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
-    mean_ci_length = mean(ci_length)
+    coverage_lb = coverage - qnorm(0.975)*coverage_se,
+    coverage_ub = coverage + qnorm(0.975)*coverage_se,
+    mean_ci_length = mean(ci_length),
+    # `Mean True Score Coverage` = mean(true_score_coverage),
+    perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
+    perc_diag_ebfmi_binary       = sum(diag_ebfmi_binary)/n
   ) %>%
-  ungroup() %>%
-  select(-tau_equivalence, - coverage_se) %>%
-  select(name, everything()) %>%
-  gt( ) %>%
+  ungroup() 
+
+results_table_cleaned[which(results_table_cleaned$name=="a"),c("perc_diag_divergences_binary","perc_diag_ebfmi_binary")] = NA
+
+results_table_cleaned %>%
+  select(-any_of(c("coverage_se", "loading_set", "pop_rel_sd", 
+         "loadings_list_pretty2", "mad",
+         "mean", "mean_se", "mean_ub", "mean_lb",
+         "bias_se"))
+  ) %>%
+  # filter(name == "rmp") %>%
+  gt() %>%
+  gt::cols_move_to_start(name) %>%
   fmt(
     columns = where(is.numeric),
     fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
   ) %>%
   fmt_number(
-    columns = c(n, n_items),
+    columns = c(n),
     decimals = 0
   ) %>%
   fmt_percent(
-    columns = starts_with("coverage"),
+    columns = c(starts_with("coverage"),contains("perc_diag")),
     decimals = 1
   ) %>%
   cols_label(
-    sample_sizes = "Sample Size",
-    name         = "Estimator",
-    n_items      = "# Items",
-    md           = "bias"
+    pop_rel      ~ "R",
+    sample_sizes ~ "{{n_obs}}",
+    n            ~ "{{n_sim}}",
+    bias           ~ "bias",
+    mean_ci_length ~ "Mean Length",
+    coverage_lb  ~ "LB",
+    coverage_ub  ~ "UB",
+    bias_lb  ~ "LB",
+    bias_ub  ~ "UB",
+    perc_diag_divergences_binary ~ "% Divergent Transitions",
+    perc_diag_ebfmi_binary ~  "% Low E-BFMI"
+  )  %>%
+  
+  tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
+  tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
+  tab_spanner(label = "Simulation Parameters", columns = c(pop_rel,sample_sizes, n)) %>%
+  tab_spanner(label = "Estimator Performance", columns = c( bias, bias_lb, bias_ub, MSE)) %>%
+  tab_spanner(label = "Confidence/Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
+  tab_footnote(
+    "R = population reliability. MSE = Mean Squared Error. Mean Length = Mean length of credible/confidence interval. "
   ) %>%
-  tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n_items, n)) %>%
-  tab_spanner(label = "Coverage", columns = starts_with("coverage")) %>%
   tab_style(
     style = cell_fill(color = "lightgray"),
     locations = cells_body(
       columns = everything(),
-      rows = name == "mrp"
+      # rows = which((sample_sizes ==200 | sample_sizes == 2000))
+      rows = which(name == "rmp")
     )
-  ) %>%
-  tab_footnote(
-    "mae = Mean Absolute Error. "
   )
-
-  gtsave(filename = file.path("results","5_results_table.html"))
-
-# Split by the number of items too ---------------------------------------------
-
-results_table_long %>%
-  # filter(pop_rel>.3 & pop_rel <.8) %>%
-  # filter(diag_ebfmi==0) %>%
-  group_by( sample_sizes, n_items, name) %>%
-  mutate(
-    difference = est - pop_rel,
-    ci_correct = (lb < pop_rel & ub > pop_rel),
-    ci_length  = ub - lb
-  ) %>%
-  summarise(
-    n = n(),
-    mad      = mean(abs(difference)),
-    md       = mean(difference),
-    coverage = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
-    mean_ci_length = mean(ci_length)
-  )
-  
-# Plots ------------------------------------------------------------------------
+  # gt::cols_hide(c(name))
   
   
-  results_table_long %>%
-    group_by( sample_sizes, n_items, name) %>%
-    mutate(
-      difference = est - pop_rel,
-      ci_correct = (lb < pop_rel & ub > pop_rel),
-      ci_length  = ub - lb
-    ) %>%
-    summarise(
-      n = n(),
-      mean     = mean(est),
-      md       = mean(difference),
-      mad      = mean(abs(difference)),
-      coverage = length(which(ci_correct))/length(ci_correct),
-      coverage_se = sqrt((coverage*(1-coverage))/n),
-      coverage_lb = coverage - 1.96*coverage_se,
-      coverage_ub = coverage + 1.96*coverage_se,
-      mean_ci_length = mean(ci_length)
-    ) %>%
-    ungroup() %>%
-    mutate(n_items = factor(n_items)) %>%
-    ggplot(aes(y = coverage, ymin = coverage_lb, ymax = coverage_ub, x = n_items, col = name)) +
-    geom_errorbar(size = 2) +  
-    geom_hline(yintercept = 0.95) +
-    jtools::theme_apa() +
-    scale_color_manual(values=c("#E69F00", "#56B4E9")) +
-    labs(x = "Number of Items Per Simulation", y = "Credible Interval Coverage") +
-    coord_cartesian(ylim = c(.5,1)) +
-    facet_wrap(~sample_sizes) 
+  gtsave(filename = file.path("results","4_table_A.docx"))
   
-
-
-
-## Does population reliability influence results -------------------------------
-
-results_table_long %>%
-  mutate(
-    pop_rel_dec = cut(pop_rel, breaks = c(0,.2,.4,.6,.8, 1))
-  ) %>% 
-  group_by(pop_rel_dec, n_items, name) %>%
-  mutate(
-    difference = est - pop_rel,
-    ci_correct = (lb < pop_rel & ub > pop_rel),
-    ci_length  = ub - lb
-  ) %>%
-  summarise(
-    n = n(),
-    mad      = mean(abs(difference)),
-    md       = mean(difference),
-    coverage = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
-    mean_ci_length = mean(ci_length)
-  )
-
-## Does third minimum loading? influence results -------------------------------
-
-results_table_long %>%
-  filter(sample_sizes != 100) %>%
-  mutate(
-    third_min_loading = cut(third_min_loading, breaks = c(0,.2,.4,.6,.8, 1))
-  ) %>% 
-  group_by(third_min_loading, n_items, name) %>%
-  mutate(
-    difference = est - pop_rel,
-    ci_correct = (lb < pop_rel & ub > pop_rel),
-    ci_length  = ub - lb
-  ) %>%
-  summarise(
-    n = n(),
-    mad      = mean(abs(difference)),
-    md       = mean(difference),
-    coverage = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
-    mean_ci_length = mean(ci_length)
-  ) 
-
-
-## What factors predict divergences? ------------------------------------------
-
-results_table %>% head()
-
-results_table %>%
-  group_by( sample_sizes, n_items, tau_equivalence) %>%
-  summarise(
-    sum_divergences = sum(diag_divergences_binary),
-    n               = n(),
-    perc_divergences = sum_divergences/n,
-    sum_ebfmi = sum(diag_ebfmi_binary),
-    perc_ebfmi = sum_ebfmi/n
-  ) %>%
-  arrange(desc(perc_ebfmi))
-
-model =
-  results_table %>%
-  glm(diag_ebfmi_binary ~ pop_ss_loading + n_items + sample_sizes, data = ., family = "binomial")
-
-model %>% summary()
-
-results_table %>%
-  mutate(
-    pop_ss_loading_decile = 
-  ) %>%
-  ggplot(aes(x = pop_ss_loading, y = ))
-
-results_table %>%
-  mutate(
-    diag_divergences_binary = as.numeric(diag_divergences > 0),
-    diag_ebfmi_binary = as.numeric(diag_ebfmi > 0)
-  ) %>%
-  cor.test(~ diag_divergences_binary + pop_ss_loading, data = .)
-
-results_table %>%
-  mutate(
-    diag_divergences_binary = as.numeric(diag_divergences > 0),
-    diag_ebfmi_binary = as.numeric(diag_ebfmi > 0)
-  ) %>%
-  cor.test(~ diag_ebfmi_binary + pop_ss_loading, data = .)
-
-
-
-
-
-
-results_table %>%
-  # filter(pop_rel>.3 & pop_rel <.8) %>%
-  # filter(diag_ebfmi==0) %>%
-  group_by(sample_sizes, tau_equivalence) %>%
-  summarise(
-    mad      = mean(abs(mrp_diff)),
-    md       = mean((mrp_diff)),
-    coverage = length(which(ci_contain))/length(ci_contain),
-    mean_ci_length = mean(rel_ci_length),
-    n = n()
-  )
-
-results_table %>%
-  group_by(n_items) %>%
-  summarise(coverage = length(which(ci_contain))/length(ci_contain),
-            mean_ci_length = mean(rel_ci_length),
-            n = n())
-
-results_table %>%
-  pull(pop_rel) %>%
-  hist()
-
-results_table %>%
-  # filter(sample_sizes == 2500) %>%
-  # filter(n_items == 6) %>%
-  ggplot(aes(x = pop_rel, y = rel_est, col = factor(n_items), shape = tau_equivalence)) +
-  geom_abline(intercept = 0, slope = 1) + 
-  geom_point( size = 3) +
-  geom_errorbar(aes(ymin = rel_lb, ymax = rel_ub), width = .01) + 
-  theme_bw() + 
-  coord_cartesian(xlim=0:1, ylim = 0:1) + 
-  facet_wrap(~tau_equivalence)
-
-results_table %>%
-  ggplot(aes(x = pop_rel, y = rel_est, col = sample_sizes, shape = tau_equivalence)) +
-  geom_abline(intercept = 0, slope = 1) + 
-  geom_point( size = 3) +
-  # geom_errorbar(aes(ymin = rel_lb, ymax = rel_ub), width = .01) + 
-  theme_bw() + 
-  coord_cartesian(xlim=0:1, ylim = 0:1) + 
-  facet_wrap(~tau_equivalence)
-
-
-
-results_table %>%
-  ggplot(aes(x = pop_rel, y = (true_score_cor2), col = sample_sizes, shape = tau_equivalence)) +
-  geom_abline(intercept = 0, slope = 1) + 
-  geom_point( size = 3) +
-  theme_bw() + 
-  coord_cartesian(xlim=0:1, ylim = 0:1) + 
-  facet_wrap(~tau_equivalence)
-
-
-# Coverage analysis
-
-results_table %>%
-  group_by(sample_sizes, tau_equivalence) %>%
-  summarise(
-    mad      = mean(abs(rel_diff)),
-    md       = mean((rel_diff)),
-    coverage = length(which(ci_contain))/length(ci_contain),
-    mean_ci_length = mean(rel_ci_length),
-    n = n()
-  )
-
-results_table %>%
-  group_by(n_items) %>%
-  summarise(coverage = length(which(ci_contain))/length(ci_contain),
-            mean_ci_length = mean(rel_ci_length),
-            n = n())
-
-results_table$pop_rel %>% hist()
-
-library(gt)
-results_table %>%
-  gt() %>%
-  fmt_number()
-
-
-
-results_table %>%
-  rowid_to_column(var = "i") %>%
-  arrange(desc(abs(rel_diff))) %>%
-  gt() %>%
-  fmt_number()
-
-
-inspect = results[[14]]
-
-inspect$regression_factor_score=NULL
-
-
-results[[1]]$
+  
+  
+# What factors predict divergent transitions? ----------------------------------
+  
+  ggplot(results_table, aes(x = pop_rel, y = diag_divergences_binary)) + 
+    geom_jitter() +
+    facet_wrap(~sample_sizes)
+  
+  
+  
   
