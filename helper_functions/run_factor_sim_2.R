@@ -61,12 +61,12 @@ run_factor_sim_2 = function(
   # Fit Model 
   
   dat_stan = list(
-    n = nrow(dat_long),
-    pps_n = length(unique(dat_long$pps)),
+    n      = nrow(dat_long),
+    pps_n  = length(unique(dat_long$pps)),
     item_n = length(unique(dat_long$name)),
     item   = match(dat_long$name, unique(dat_long$name)),
     pps    = dat_long$pps,
-    y = dat_long$value
+    y      = dat_long$value
   )
   
   if (use_init){                                                                # Initialization has a HUGE impact on small sample performance! 
@@ -88,6 +88,15 @@ run_factor_sim_2 = function(
     iter_sampling = 2000,
     adapt_delta = .95
   )
+  
+  # Calculate coefficient H using posterior draws of mcmc model 
+  
+  loadings_df = data.frame(internal_results$summary("lambda"))
+  
+  l = out[["mcmc_loadings"]] = loadings_df$mean
+  
+  out[["mcmc_coefh"]] = (1+(sum(l^2/(1-l^2))^-1))^-1
+  
   # Diagnostics using cmdstanr
   diagnostics = internal_results$diagnostic_summary()
   
@@ -99,7 +108,10 @@ run_factor_sim_2 = function(
   out[["diagnostics_treedepth"]] =  sum(diagnostics$num_max_treedepth)
   out[["diagnostics_ebfmi"]] = diagnostics$ebfmi
 
-  out[["r_est"]] = calc_r_stan_m2(internal_results)
+  calc_rmp =  calc_r_stan_m3(internal_results)
+  
+  out[["rmp_est"]] = calc_rmp$hdci
+  out[["rmp_pd"]]  = calc_rmp$pd
   
   if (additional_tests==TRUE){
     
