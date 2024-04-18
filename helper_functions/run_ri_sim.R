@@ -14,7 +14,7 @@ run_ri_sim = function(
     additional_tests = TRUE
 ){
     # warnings
-  set.seed(10)
+  # set.seed(10)
   
   if (is.null(i)) stop("i is null")
   if (is.null(n_pps)) stop("n_pps is null")
