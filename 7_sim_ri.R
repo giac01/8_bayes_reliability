@@ -53,7 +53,7 @@ results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), fu
     reward_outcome     = c(-1, 2),
     init_beliefs       = c(0,0),
     additional_tests = TRUE,
-    save_results = TRUE
+    save_results = FALSE
   )
 }
 )
