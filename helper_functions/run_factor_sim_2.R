@@ -101,12 +101,12 @@ run_factor_sim_2 = function(
   diagnostics = internal_results$diagnostic_summary()
   
   # Extract divergences
-  out[["diag_divergences"]] = sum(diagnostics$num_divergent)
+  out[["diag_divergences"]]        = sum(diagnostics$num_divergent)
   
   # Check HMC diagnostics using cmdstanr
   out[["diagnostics_divergences"]] = sum(diagnostics$num_divergent)
-  out[["diagnostics_treedepth"]] =  sum(diagnostics$num_max_treedepth)
-  out[["diagnostics_ebfmi"]] = diagnostics$ebfmi
+  out[["diagnostics_treedepth"]]   = sum(diagnostics$num_max_treedepth)
+  out[["diagnostics_ebfmi"]]       = diagnostics$ebfmi
 
   calc_rmp =  calc_r_stan_m3(internal_results)
   

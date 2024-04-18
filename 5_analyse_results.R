@@ -15,7 +15,7 @@ results_files = list.files(results_path,
 )
 results = lapply(results_files, function(x) readRDS(x))
 
-results = results[[1]]
+results = do.call("c", results)
 
 # params_list = readRDS(file = file.path("results","5_params_list_a.rds"))
 
@@ -34,9 +34,9 @@ results_table$pop_ss_loading  = sapply(results, function(x) sum(x$settings$loadi
 results_table$sec_min_loading = sapply(results, function(x) sort(x$settings$loadings, decreasing = TRUE)[2]) %>% as.numeric()
 results_table$third_min_loading =  sapply(results, function(x) sort(x$settings$loadings, decreasing = TRUE)[3]) %>% as.numeric()
 
-results_table$rmp_est         = sapply(results, function(x) x$r_est[1] )%>% as.numeric()
-results_table$rmp_lb          = sapply(results, function(x) x$r_est[2]) %>% as.numeric()
-results_table$rmp_ub          = sapply(results, function(x) x$r_est[3]) %>% as.numeric()
+results_table$rmp_est         = sapply(results, function(x) x$rmp_est[1] )%>% as.numeric()
+results_table$rmp_lb          = sapply(results, function(x) x$rmp_est[2]) %>% as.numeric()
+results_table$rmp_ub          = sapply(results, function(x) x$rmp_est[3]) %>% as.numeric()
 results_table$rmp_ci_length   = results_table$rmp_ub - results_table$rmp_lb
 
 results_table$a_est           = sapply(results, function(x) x$alpha_reliability$est)%>% as.numeric()
@@ -100,6 +100,8 @@ results_table_cleaned =  results_table_long %>%
   ungroup() 
 
 results_table_cleaned[which(results_table_cleaned$name=="a"),c("perc_diag_divergences_binary","perc_diag_ebfmi_binary")] = NA
+results_table_cleaned$name[results_table_cleaned$name=="a"] = "Alpha"
+results_table_cleaned$name[results_table_cleaned$name=="rmp"] = "RMP"
 
 results_table_cleaned %>%
   select(-any_of(c("coverage_se", "loading_set", "pop_rel_sd", 
@@ -115,7 +117,7 @@ results_table_cleaned %>%
     fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
   ) %>%
   fmt_number(
-    columns = c(n),
+    columns = c(n, n_items),
     decimals = 0
   ) %>%
   fmt_percent(
@@ -124,6 +126,7 @@ results_table_cleaned %>%
   ) %>%
   cols_label(
     pop_rel      ~ "R",
+    n_items      ~ "{{n_items}}",
     sample_sizes ~ "{{n_obs}}",
     n            ~ "{{n_sim}}",
     bias           ~ "bias",
@@ -138,7 +141,7 @@ results_table_cleaned %>%
   
   tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
   tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
-  tab_spanner(label = "Simulation Parameters", columns = c(pop_rel,sample_sizes, n)) %>%
+  tab_spanner(label = "Simulation Parameters", columns = c(n_items,sample_sizes, n)) %>%
   tab_spanner(label = "Estimator Performance", columns = c( bias, bias_lb, bias_ub, MSE)) %>%
   tab_spanner(label = "Confidence/Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   tab_footnote(
@@ -149,13 +152,13 @@ results_table_cleaned %>%
     locations = cells_body(
       columns = everything(),
       # rows = which((sample_sizes ==200 | sample_sizes == 2000))
-      rows = which(name == "rmp")
+      rows = which(name == "RMP")
     )
-  )
-  # gt::cols_hide(c(name))
+  ) %>% 
+  gt::cols_hide(c(pop_rel)) 
   
   
-  gtsave(filename = file.path("results","4_table_A.docx"))
+  gtsave(filename = file.path("results","5_table_A.html"))
   
   
   

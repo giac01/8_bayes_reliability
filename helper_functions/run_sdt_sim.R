@@ -26,6 +26,7 @@
   results = list()
   
   results[["settings"]] = list()
+  results[["settings"]][["seed"]]     =  .Random.seed # This was recently added! 
   results[["settings"]][["sens_mean"]]  = sens_mean
   results[["settings"]][["sens_sigma"]] = sens_sigma
   results[["settings"]][["k_mean"]]     = k_mean
