@@ -7,8 +7,19 @@ rm(list = ls(all.names = TRUE))
 
 # Load Data --------------------------------------------------------------------
 
-results     = readRDS(file = file.path("results","6_results_20240402_065858.rds"))   # Need to re-run this as i accidently squared sigma
+results_path = file.path("results","6_sdt_results")
+
+results_files = list.files(results_path, 
+                           pattern = "^6_results_",
+                           recursive = FALSE,
+                           full.names = TRUE
+)
+results = lapply(results_files, function(x) readRDS(x))
+
+results = results[[1]]
+
 results_pop = readRDS(file = file.path("results","6_results_pop_c.rds"))
+
 params_list = readRDS(file = file.path("results","6_params_list_c.rds"))
 
 # Sample size used in "population" simulations. 
@@ -126,16 +137,18 @@ results_table_long = results_table %>%
       pop_rel_sd      = sd(pop_rel),
       avg_cor2        = mean(true_score_cor2),
       mean        = mean(est),
-      md          = mean(difference),
-      mae         = mean(abs(difference)),
+      bias        = mean(difference),
+      bias_se     = sqrt(1/(n*(n-1))*sum((est-mean)^2)),
+      bias_lb     = bias - qnorm(0.975)*bias_se,
+      bias_ub     = bias + qnorm(0.975)*bias_se,      mae         = mean(abs(difference)),
       MSE         = mean((difference)^2),
       coverage    = length(which(ci_correct))/length(ci_correct),
       coverage_se = sqrt((coverage*(1-coverage))/n),
       coverage_lb = coverage - 1.96*coverage_se,
       coverage_ub = coverage + 1.96*coverage_se,
       mean_ci_length = mean(ci_length),
-      sum_div     = sum(diag_divergences_binary),
-      sum_ebfmi   = sum(diag_ebfmi_binary)
+      perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
+      perc_diag_ebfmi_binary       = sum(diag_ebfmi_binary)/n
       
     )  %>%
     ungroup() %>%
@@ -148,7 +161,7 @@ results_table_long = results_table %>%
       fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
     ) %>%
     fmt_number(
-      columns = c(n, n_items, sum_div, sum_ebfmi),
+      columns = c(n, n_items, perc_diag_divergences_binary, perc_diag_ebfmi_binary),
       decimals = 0
     ) %>%
     fmt_percent(
@@ -164,13 +177,18 @@ results_table_long = results_table %>%
       sens_sigma   ~ "{{:sigma:_di'}}",
       k_sigma      ~ "{{:sigma:_:kappa:}}",
       n_items      ~ "{{n_trials}}",
-      md           ~ "bias",
+      bias           ~ "bias",
+      bias_lb  ~ "LB",
+      bias_ub  ~ "UB",
       mean_ci_length ~ "Mean Length",
-      name         ~ "Estimator"
+      name         ~ "Estimator",
+      perc_diag_divergences_binary ~ "% Divergent Transitions",
+      perc_diag_ebfmi_binary ~  "% Low E-BFMI"
       
     )  %>%
+    tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
     tab_spanner(label = "Simulation Parameters", columns = c(pop_rel_mean, sens_sigma, n_items, k_sigma, n, sample_sizes,name)) %>%
-    tab_spanner(label = "Estimator Performance", columns = c(mean, mae, MSE, md)) %>%
+    tab_spanner(label = "Estimator Performance", columns = c(mean, mae, MSE, contains("bias"))) %>%
     tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
     tab_footnote(
       "{{R_pop}} = Simulated Population Reliability. MSE = Mean Squared Error. n = number of simulations. These results are averaged over the different sample sizes"
@@ -182,7 +200,7 @@ results_table_long = results_table %>%
         rows = which((name == "rmp"))
       )
     ) %>% 
-  gt::cols_hide(c(mae,avg_cor2))
+  gt::cols_hide(c(mae,avg_cor2, bias_se, mean))
 
   gtsave(filename = file.path("results","6_results_table_1.html"))
   
@@ -200,7 +218,7 @@ results_table_long = results_table %>%
   #     pop_rel_sd      = sd(pop_rel),
   #     avg_cor2        = mean(true_score_cor2),
   #     mean        = mean(est),
-  #     md          = mean(difference),
+  #     bias          = mean(difference),
   #     mae         = mean(abs(difference)),
   #     MSE         = mean((difference)^2),
   #     coverage    = length(which(ci_correct))/length(ci_correct),
@@ -238,12 +256,12 @@ results_table_long = results_table %>%
   #     sens_sigma   ~ "{{:sigma:_di'}}",
   #     k_sigma      ~ "{{:sigma:_:kappa:}}",
   #     n_items      ~ "# Trials",
-  #     md           ~ "bias",
+  #     bias           ~ "bias",
   #     mean_ci_length ~ "Mean Length",
   #     name         ~ "Estimator"
   #   )  %>%
   #   tab_spanner(label = "Simulation Parameters", columns = c(pop_rel_mean, sens_sigma, n_items, k_sigma, n, sample_sizes,name)) %>%
-  #   tab_spanner(label = "Estimator Performance", columns = c(mean, mae, MSE, md)) %>%
+  #   tab_spanner(label = "Estimator Performance", columns = c(mean, mae, MSE, bias)) %>%
   #   tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   #   tab_footnote(
   #     "{{R_pop}} = Simulated Population Reliability. MSE = Mean Squared Error. n = number of simulations. These results are averaged over the different sample sizes"
@@ -293,6 +311,8 @@ results_table_long = results_table %>%
     
     results_table_precision
     
+
+
     
 head(results_table_precision)
 # Plots ------------------------------------------------------------------------
@@ -311,8 +331,6 @@ head(results_table_precision)
     geom_abline(slope = 1, intercept = 0) +
     geom_errorbar(aes(ymin = lb, ymax = ub)) +
     facet_wrap(~sample_sizes + n_items)
-  
-  
   
   results_table_long %>%
     filter(name == "rmp") %>%

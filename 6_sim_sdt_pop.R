@@ -58,7 +58,7 @@ params_list <- expand.grid(
   sens_sigma     = c(0,.2,.4),
   k_mean         = c(0),
   k_sigma        = c(0, .20),
-  sample_sizes = c( 10000),
+  sample_sizes = c( 100000),
   n_items = c(10, 20, 40),
   run_rep = 1:1  # 1 rep takes about 5 minutes (100 took 8.3 hours)
 ) # 8100 obs in 
@@ -88,7 +88,7 @@ results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), fu
     n_items    = params_list$n_items[i],
     b_prior    = params_list$sens_mean[i],
     sd_prior   = params_list$sens_sigma[i],
-    save_results = TRUE
+    save_results = FALSE
   )})
   
 }
