@@ -23,21 +23,21 @@ mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 
 # Example of creating a list of all combinations
 params_list <- expand.grid(
-  n_pps               = c(5000),
-  n_trials            = c(50, 100, 200),
+  n_pps               = c(1000),
+  n_trials            = c(100, 200, 400),
   learning_rate_mean  = 0.5,
   learning_rate_sd    = c(0, 0.15, .29),
   decision_noise_mean = .75,
   decision_noise_sd   = .25,
   prob_real           = c(.75),    # probability of outcome 2 
-  run_rep = 1:1  
+  run_rep = 1:50 # 100 took 2.5 hours 260 took 1.9 hours when not sourcing, weird!!!
 ) 
 
 # Run code in parallel using future --------------------------------------------
 print(availableCores())
 
 # future::plan(future::multisession(workers = availableCores()))
-future::plan(future::multisession(workers =  8))
+future::plan(future::multisession(workers =  3))
 # future::plan(future::sequential())
 
 time_a = Sys.time()
@@ -54,8 +54,9 @@ results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), fu
       prob_real          = params_list$prob_real[i],
       reward_outcome     = c(-1, 2),
       init_beliefs       = c(0,0),
+      n_draws            = 250,
       additional_tests = FALSE,
-      save_results = TRUE
+      save_results = FALSE
     )
   }, error = function(e) {
     message(paste("Error in iteration", i, ":", e$message))
@@ -83,7 +84,17 @@ saveRDS(results, file = file.path("results", filename))
 # Quick checker
 
 sapply(results, function(x) x$cor_bayes_estimate_true$estimate^2) %>% as.numeric()
-sapply(results, function(x) x$rmp[1]) %>% as.numeric()
+rmp_est = sapply(results, function(x) x$rmp[1]) %>% as.numeric()
+rmp_lb = sapply(results, function(x) x$rmp[2]) %>% as.numeric()
+rmp_ub = sapply(results, function(x) x$rmp[3]) %>% as.numeric()
+
+data.frame(rmp_est, rmp_lb, rmp_ub) %>%
+  arrange(rmp_est) %>%
+  mutate(i = 1:nrow(.)) %>%
+  ggplot(aes(x = i, y = rmp_est, ymin = rmp_lb, ymax = rmp_ub)) + 
+  geom_errorbar() + 
+  geom_hline(yintercept = .510, col = "red")
+
 lapply(results, function(x) x$stan_results_summary)
 
 plot(sapply(results, function(x) x$cor_bayes_estimate_true$estimate^2) %>% as.numeric(),

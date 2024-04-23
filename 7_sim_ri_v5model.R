@@ -10,7 +10,7 @@ library(future)
 library(future.apply)
 library(cmdstanr)
 
-seedval = 4
+seedval = 1
 
 # Source all simulation functions 
 # List all .R files in the folder
@@ -19,20 +19,20 @@ list.files(file.path("helper_functions"), pattern = "\\.R$", full.names = TRUE) 
 
 # Compile stan model -----------------------------------------------------------
 
-mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
+mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v5.stan"))
 
 # Create Parameter Table ---------------------------------------------------
 
 # Example of creating a list of all combinations
 params_list <- expand.grid(
-  n_pps               = c(200, 500, 2000),
+  n_pps               = c(200, 500, 1000),
   n_trials            = c(100, 200, 400),
   learning_rate_mean  = 0.5,
   learning_rate_sd    = c(0, 0.15, .29),
   decision_noise_mean = .75,
   decision_noise_sd   = .25,
   prob_real           = c(.75),    # probability of outcome 2 
-  run_rep = 1:20 # 50 takes 5 hours! 
+  run_rep = 1:1 # 50 takes 5 hours! 
 ) 
 
 # Run code in parallel using future --------------------------------------------
@@ -55,7 +55,8 @@ results <- future.apply::future_lapply(future.seed = seedval, 1:nrow(params_list
     reward_outcome     = c(-1, 2),
     init_beliefs       = c(0,0),
     additional_tests = TRUE,
-    save_results = FALSE
+    save_results = FALSE,
+    init_stan = "beta"
   )
 }
 )
@@ -68,7 +69,7 @@ future::plan(future::sequential())
 #saveRDS(results, file = file.path("results","4_results_tauinequiv_aa.rds"))
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
-filename <- paste0("7_results_ri_seed", seedval ,"_",timestamp,".rds")
+filename <- paste0("7_results_ri_v5_seed", seedval ,"_",timestamp,".rds")
 saveRDS(results, file = file.path("results", filename))
 
 
