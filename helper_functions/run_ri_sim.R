@@ -10,8 +10,10 @@ run_ri_sim = function(
     decision_noise_sd,
     prob_real,
     reward_outcome,
+    n_draws = 2000,
     save_results = FALSE,
-    additional_tests = TRUE
+    additional_tests = TRUE,
+    init_stan = "normal"
 ){
     # warnings
   # set.seed(10)
@@ -68,25 +70,29 @@ run_ri_sim = function(
     outcome = dat$outcome
   )
   
-  # init_values_muphi <- function() {
-  #   list(
-  #     A_pop_mu = .5,
-  #     A_pop_phi = 1,
-  #     tau_unscaled_mu = .5,
-  #     tau_unscaled_phi= 1,
-  #     A = rep(.5, stan_data$N),
-  #     tau_unscaled = rep(1/5, stan_data$N)
-  #   )
-  # }
+  if (init_stan == "beta"){
+    init_values_muphi <- function() {
+      list(
+        A_pop_mu = .5,
+        A_pop_phi = 1,
+        tau_unscaled_mu = .5,
+        tau_unscaled_phi= 1,
+        A = rep(.5, stan_data$N),
+        tau_unscaled = rep(1/5, stan_data$N)
+      )
+    }
+  }
   
-  init_values_muphi <- function() {
-    list(
-      mu = c(0,.5),
-      sigma = c(1,1),
-
-      learning_rate_z = rep(0, stan_data$N),
-      decision_noise_z = rep(0, stan_data$N)
-    )
+  if (init_stan == "normal"){
+    init_values_muphi <- function() {
+      list(
+        mu = c(0,.5),
+        sigma = c(1,1),
+  
+        learning_rate_z = rep(0, stan_data$N),
+        decision_noise_z = rep(0, stan_data$N)
+      )
+    }
   }
   
   
@@ -94,7 +100,7 @@ run_ri_sim = function(
     data = stan_data, 
     seed = 123,
     init = init_values_muphi,
-    draws = 2000
+    draws = n_draws
   )
    
    model_exists = (length(internal_results$output_files())!=0)
@@ -133,16 +139,16 @@ run_ri_sim = function(
   
     results[["avg_true_score_coverage"]] = length(which( learning_rate_estimates$ci_contain_true_score==1))/length(which( learning_rate_estimates$ci_contain_true_score<2))
     
+    rmp_calc = calc_r_ri(internal_results)
+    
+    results[["rmp"]] = rmp_calc$hdci
+    results[["rmp_pd"]] = rmp_calc$pd
+    
   }
   
   if (model_exists){
    
     results[["cor_bayes_estimate_true"]] = cor.test(learning_rate_estimates$y, learning_rate_estimates$true_learning_rate)
-  
-    rmp_calc = calc_r_ri(internal_results)
-  
-    results[["rmp"]] = rmp_calc$hdci
-    results[["rmp_pd"]] = rmp_calc$pd
   
     results[["mean(learning_rate)"]] = mean(learning_rate_estimates$y)
   
@@ -159,7 +165,7 @@ run_ri_sim = function(
      
    }
    
-   if (model_exists){
+   if (model_exists & additional_tests==TRUE){
      results[["stan_results_summary"]] = internal_results$summary() %>%
        slice(which(!grepl("^A\\[",.$variable))) %>%
        slice(which(!grepl("^tau_unscaled\\[",.$variable))) %>%
@@ -173,7 +179,7 @@ run_ri_sim = function(
     results[["stan_results"]] = internal_results
   }
 
-  if ((i %% 1)==0){
+  if ((i %% 5)==0){
     write.csv(data.frame(y=""), file.path("progress_sdt",paste0(i,".ignore")))
   }
 
