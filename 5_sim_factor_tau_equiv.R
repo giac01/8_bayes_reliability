@@ -29,7 +29,7 @@ params_list <- expand.grid(
   tau_equivalence = c(TRUE),
   sample_sizes = c(50, 100, 500, 2000),
   n_items = c(3, 6, 12),
-  run_rep = 1:400
+  run_rep = 1:1000
 ) 
 
 # 250 reps took 3 hours and 25 minuntes 
