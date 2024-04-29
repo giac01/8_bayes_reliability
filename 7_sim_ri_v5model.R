@@ -10,7 +10,7 @@ library(future)
 library(future.apply)
 library(cmdstanr)
 
-seedval = 1
+seedval = 12
 
 # Source all simulation functions 
 # List all .R files in the folder
@@ -32,7 +32,7 @@ params_list <- expand.grid(
   decision_noise_mean = .75,
   decision_noise_sd   = .25,
   prob_real           = c(.75),    # probability of outcome 2 
-  run_rep = 1:1 # 50 takes 5 hours! 
+  run_rep = 1:180 # 50 takes 5 hours! 
 ) 
 
 # Run code in parallel using future --------------------------------------------

@@ -10,7 +10,7 @@ library(future)
 library(future.apply)
 library(cmdstanr)
 
-seedval = 4
+seedval = 101
 
 # Source all simulation functions 
 # List all .R files in the folder
@@ -25,14 +25,19 @@ mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 
 # Example of creating a list of all combinations
 params_list <- expand.grid(
-  n_pps               = c(200, 500, 2000),
+  #n_pps               = c(200, 500, 1000),
+  n_pps               = c(200),
   n_trials            = c(100, 200, 400),
+  # n_trials            = c(200),
   learning_rate_mean  = 0.5,
-  learning_rate_sd    = c(0, 0.15, .29),
+  learning_rate_sd    = c(0, .2, 1),
+  # learning_rate_sd    = c(.2),
   decision_noise_mean = .75,
   decision_noise_sd   = .25,
   prob_real           = c(.75),    # probability of outcome 2 
-  run_rep = 1:20 # 50 takes 5 hours! 
+  run_rep = 1:1000 # 50 takes 11 hours  (FULLRANK) Takes 3.2 hours with meanfield (.0001) 
+                   # 
+                   # 100 takes 1.25 days (.00001)
 ) 
 
 # Run code in parallel using future --------------------------------------------
@@ -72,4 +77,13 @@ filename <- paste0("7_results_ri_seed", seedval ,"_",timestamp,".rds")
 saveRDS(results, file = file.path("results", filename))
 
 
+
 # Time difference of 2.264748 days
+
+# results[[5]]$stan_results$summary() %>%
+#   slice(which(!grepl("^A\\[",.$variable))) %>%
+#   slice(which(!grepl("^tau_unscaled\\[",.$variable))) %>%
+#   slice(which(!grepl("^tau\\[",.$variable))) %>%
+#   slice(which(!grepl("_z",.$variable))) %>%
+#   slice(which(!grepl("learning_rate\\[",.$variable))) %>%
+#   slice(which(!grepl("^decision_noise\\[",.$variable))) 

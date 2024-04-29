@@ -21,11 +21,11 @@ sim_ri = function(
 
   
   if (learning_rate_sd==0){learning_rate = rep(learning_rate_mean, n_pps)} else{
-    learning_rate  = g_rbeta(n_pps, learning_rate_mean, learning_rate_sd)
+    learning_rate  = g_normaluniform(n_pps, learning_rate_mean, learning_rate_sd)
   }
 
   if (decision_noise_sd==0){decision_noise = rep(decision_noise_mean, n_pps)} else{
-    decision_noise = g_rbeta(n_pps, mu = decision_noise_mean/5, sd = decision_noise_sd/5)*5
+    decision_noise = g_normaluniform(n_pps, mu = decision_noise_mean/5, sd = decision_noise_sd/5)*5
   }
 
   # Initialise outcome matrix, choice matrix, and beliefs matrix 

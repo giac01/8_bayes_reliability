@@ -47,7 +47,8 @@ run_ri_sim = function(
   results[["settings"]][["decision_noise_mean"]] = decision_noise_mean
   results[["settings"]][["decision_noise_sd"]]   = decision_noise_sd
   results[["settings"]][["prob_real"]]           = prob_real
-  results[["settings"]][["save_results"]]        = save_results
+  results[["settings"]][["save_results"]]        = save_results 
+  results[["diagnostics"]]                       = list()
 
   dat = sim_ri(
     n_pps              = n_pps,
@@ -95,15 +96,21 @@ run_ri_sim = function(
     }
   }
   
-  
   internal_results = mod$variational(
     data = stan_data, 
     seed = 123,
     init = init_values_muphi,
-    draws = n_draws
+    draws = n_draws,
+    # tol_rel_obj = .0001,
+    # iter = 40000,
+    
+    tol_rel_obj = .00001, # increased by 1/10 (again)
+    iter = 40000,
+    algorithm = "meanfield",
+    save_latent_dynamics = TRUE
   )
    
-   model_exists = (length(internal_results$output_files())!=0)
+  model_exists = (length(internal_results$output_files())!=0)
   # additional tests use up a lot of memory so need to be disabled for population calculations with large N_sim
    
   if (additional_tests == FALSE & model_exists) {
@@ -147,7 +154,12 @@ run_ri_sim = function(
   }
   
   if (model_exists){
-   
+    results[["diagnostics"]][["model_name"]] = internal_results$metadata()$model_name
+
+    x = read.csv(internal_results$latent_dynamics_files(), skip = 32)
+    
+    results[["diagnostics"]][["max_iter"]] = max(x$X..iter)
+
     results[["cor_bayes_estimate_true"]] = cor.test(learning_rate_estimates$y, learning_rate_estimates$true_learning_rate)
   
     results[["mean(learning_rate)"]] = mean(learning_rate_estimates$y)
