@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J 5_sim_inequiv
+#SBATCH -J 5_sim_tauequiv
 #! Which project should be charged:
 #SBATCH -A BLAKEMORE-SL3-CPU
 #SBATCH -p icelake

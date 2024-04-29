@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J 6_sim_sdt
+#SBATCH -J 7_sim_reinforcementlearning
 #! Which project should be charged:
 #SBATCH -A BLAKEMORE-SL3-CPU
 #SBATCH -p icelake

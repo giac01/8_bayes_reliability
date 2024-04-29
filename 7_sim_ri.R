@@ -10,7 +10,7 @@ library(future)
 library(future.apply)
 library(cmdstanr)
 
-seedval = 101
+seedval = 1
 
 # Source all simulation functions 
 # List all .R files in the folder
@@ -43,8 +43,8 @@ params_list <- expand.grid(
 # Run code in parallel using future --------------------------------------------
 print(availableCores())
 
-# future::plan(future::multisession(workers = availableCores()))
-future::plan(future::multisession(workers =  8))
+ future::plan(future::multisession(workers = availableCores()))
+#future::plan(future::multisession(workers =  8))
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = seedval, 1:nrow(params_list), function(i) {
@@ -69,8 +69,6 @@ time_b = Sys.time()
 time_b - time_a
 
 future::plan(future::sequential())
-
-#saveRDS(results, file = file.path("results","4_results_tauinequiv_aa.rds"))
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
 filename <- paste0("7_results_ri_seed", seedval ,"_",timestamp,".rds")
