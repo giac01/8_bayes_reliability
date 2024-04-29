@@ -43,7 +43,7 @@ transformed parameters {
 model {
   // Hyperparameters
   mu    ~ logistic(0, 1);               // mu_z[1] -> average pop learning rate 
-  sigma ~ logistic(0, 0.2);             // standard deviations in individual diff in learning rate and decision noise
+  sigma ~ logistic(0, 0.15);             // standard deviations in individual diff in learning rate and decision noise
 
   // individual parameters
   learning_rate_z  ~ logistic(0, 1);              // Individual differences in learning rate (standardized scale)
@@ -75,8 +75,8 @@ generated quantities {
   real mean_pps_decision_noise = mean(decision_noise);
   real sd_pps_decision_noise   = sd(decision_noise);
 
-  real mean_dist_learning_rate  = Phi_approx(mu[1]);
-  real mean_dist_decision_noise = 5 * Phi_approx(mu[2]);
+  real mean_dist_learning_rate  = inv_logit(mu[1]);
+  real mean_dist_decision_noise = 5 * inv_logit(mu[2]);
   
   vector[N] A = learning_rate;   // This is just because my R code assumes learning_rate is called A (like the original stan caode called it!)
 }

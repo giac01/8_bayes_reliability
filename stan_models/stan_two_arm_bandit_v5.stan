@@ -2,7 +2,7 @@
 // V2:Removed generated quantities
 // V3: beta alpha & beta parameterisation
 // V4: beta mean and sample size parameterization 
-// V5: Change lower limits of parameters
+// V5: Change lower limits of parameters // This function has a problem in that when reliability is 0, it seems to have a lower bound near .25
 
 // For some reason i can't get models with beta distributions to work well... 
 
@@ -53,10 +53,10 @@ transformed parameters {
 model {
   // Hyperpriots
   A_pop_mu ~ beta(1, 1);
-  //A_pop_phi ~ gamma(1, 3);;
+  A_pop_phi ~ gamma(1, 3);
   
   tau_unscaled_mu ~ beta(1,1);
- // tau_unscaled_phi ~ gamma(1, 3);
+  tau_unscaled_phi ~ gamma(1, 3);
   
   // Hyperparameters
   A  ~ beta(A_pop_alpha, A_pop_beta);              // mu_pr[1] -> average pop learning rate 

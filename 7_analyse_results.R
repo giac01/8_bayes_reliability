@@ -10,7 +10,7 @@ rm(list = ls(all.names = TRUE))
 results_path = file.path("results","7_ri_results")
 
 results_files = list.files(results_path, 
-                           pattern = "^7_results_",
+                           pattern = "^7_results_ri_seed3",
                            recursive = FALSE,
                            full.names = TRUE
 )
@@ -19,26 +19,26 @@ results = lapply(results_files[!grepl("pop",results_files)], function(x) readRDS
 
 results = do.call("c", results)
 
-results_pop = readRDS(file = results_files[grepl("pop",results_files)])
+
+# results_pop = readRDS(file = results_files[grepl("pop",results_files)])
 
 # Sample size used in "population" simulations. 
 # results_pop[[1]]$settings$n_pps
 
 # Extract Population Reliability simulations -----------------------------------
 
-results_pop[[1]]$settings$n_pps
+# results_pop[[1]]$settings$n_pps
 
-simulated_reliabilities     = sapply(results_pop, function(x) x$cor_bayes_estimate_true$estimate^2)
-simulated_reliabilities     = ifelse(is.na(simulated_reliabilities), 0,  simulated_reliabilities)
-sample_sizes                = sapply(results_pop, function(x) x$settings$n_pps)
-n_trials                    = sapply(results_pop, function(x) x$settings$n_trials)
-learning_rate_mean          = sapply(results_pop, function(x) x$settings$learning_rate_mean)
-learning_rate_sd            = sapply(results_pop, function(x) x$settings$learning_rate_sd)
-decision_noise_mean         = sapply(results_pop, function(x) x$settings$decision_noise_mean)
-decision_noise_sd           = sapply(results_pop, function(x) x$settings$decision_noise_sd)
-# prob_real                   = sapply(results_pop, function(x) x$settings$prob_real[1])
-
-settings_used = paste(n_trials,learning_rate_mean, learning_rate_sd, decision_noise_mean,decision_noise_sd, sep = "_")
+# simulated_reliabilities     = sapply(results_pop, function(x) x$cor_bayes_estimate_true$estimate^2)
+# simulated_reliabilities     = ifelse(is.na(simulated_reliabilities), 0,  simulated_reliabilities)
+# sample_sizes                = sapply(results_pop, function(x) x$settings$n_pps)
+# n_trials                    = sapply(results_pop, function(x) x$settings$n_trials)
+# learning_rate_mean          = sapply(results_pop, function(x) x$settings$learning_rate_mean)
+# learning_rate_sd            = sapply(results_pop, function(x) x$settings$learning_rate_sd)
+# decision_noise_mean         = sapply(results_pop, function(x) x$settings$decision_noise_mean)
+# decision_noise_sd           = sapply(results_pop, function(x) x$settings$decision_noise_sd)
+# 
+# settings_used = paste(n_trials,learning_rate_mean, learning_rate_sd, decision_noise_mean,decision_noise_sd, sep = "_")
 
 # Create results table----------------------------------------------------------
 did_model_run = rep(NA, length(results))
@@ -83,6 +83,11 @@ results_table$cor_bayes_estimate_true_lb[is.na(results_table$cor_bayes_estimate_
 results_table$cor_bayes_estimate_true_ub = sapply(results, function(x) x$cor_bayes_estimate_true$conf.int[2]) %>% as.numeric()
 results_table$cor_bayes_estimate_true_ub[is.na(results_table$cor_bayes_estimate_true_ub)] = 0
 
+# Diagnostics 
+results_table$max_iter = sapply(results, function(x) x$diagnostics$max_iter) %>% as.numeric()
+
+results[[1]]$diagnostics$max_iter
+
 # Add population reliability
 
 results_table$settings_used = paste(
@@ -104,7 +109,7 @@ results_table$settings_used_with_npps = paste(
   sep = "_"
 )
 
-results_table$pop_rel = simulated_reliabilities[match(results_table$settings_used, settings_used)]
+# results_table$pop_rel = simulated_reliabilities[match(results_table$settings_used, settings_used)]
 
 ## calculate LOO cross-validated true_score_cor  -----------------------------------
 results_table$true_score_cor2_loo = NA
@@ -196,58 +201,58 @@ results_table %>%
     style = cell_fill(color = "lightgray"),
     locations = cells_body(
       columns = everything(),
-      rows = which((sample_sizes == 200))
+      rows = which((learning_rate_sd == .200))
     )
   ) %>%
   gt::cols_hide(c(mae, bias_se, mean))
 
 
-gtsave(filename = file.path("results","7_results_table_1.html"))
+#gtsave(filename = file.path("results","7_results_table_1.html"))
 
 # Examine coverage issues in more detail ---------------------------------------
 
-results_table %>%
-  mutate(
-    sample_sizes = factor(sample_sizes),
-    learning_rate_sd  = factor(learning_rate_sd),
-    n_trials     = factor(n_trials),
-    true_score_cor2 = cor_bayes_estimate_true^2
-  ) %>%
-  ggplot(aes( x = pop_rel, y = rmp_est, shape = sample_sizes, col = n_trials)) + 
-  geom_point() + 
-  geom_abline(intercept = 0, slope = 1) +
-  facet_wrap(~learning_rate_sd + sample_sizes)
+# results_table %>%
+#   mutate(
+#     sample_sizes = factor(sample_sizes),
+#     learning_rate_sd  = factor(learning_rate_sd),
+#     n_trials     = factor(n_trials),
+#     true_score_cor2 = cor_bayes_estimate_true^2
+#   ) %>%
+#   ggplot(aes( x = pop_rel, y = rmp_est, shape = sample_sizes, col = n_trials)) + 
+#   geom_point() + 
+#   geom_abline(intercept = 0, slope = 1) +
+#   facet_wrap(~learning_rate_sd + sample_sizes)
+# 
+# results_table %>%
+#   mutate(
+#     sample_sizes = factor(sample_sizes),
+#     learning_rate_sd  = factor(learning_rate_sd),
+#     n_trials     = factor(n_trials),
+#     true_score_cor2 = cor_bayes_estimate_true^2
+#   ) %>%
+#   ggplot(aes( x = pop_rel, y = true_score_cor2, shape = sample_sizes, col = n_trials)) + 
+#   geom_point() + 
+#   geom_abline(intercept = 0, slope = 1) +
+#   facet_wrap(~learning_rate_sd + sample_sizes)
 
-results_table %>%
-  mutate(
-    sample_sizes = factor(sample_sizes),
-    learning_rate_sd  = factor(learning_rate_sd),
-    n_trials     = factor(n_trials),
-    true_score_cor2 = cor_bayes_estimate_true^2
-  ) %>%
-  ggplot(aes( x = pop_rel, y = true_score_cor2, shape = sample_sizes, col = n_trials)) + 
-  geom_point() + 
-  geom_abline(intercept = 0, slope = 1) +
-  facet_wrap(~learning_rate_sd + sample_sizes)
-
-results_table %>%
-  # filter(sample_sizes==1000) %>%
-  # filter(n_trials ==200) %>%
-  # filter(learning_rate_sd==.15) %>%
-  mutate(
-    sample_sizes = factor(sample_sizes),
-    learning_rate_sd  = factor(learning_rate_sd),
-    n_trials     = factor(n_trials),
-    true_score_cor2 = cor_bayes_estimate_true^2
-  ) %>%
-  arrange(rmp_est) %>%
-  group_by(sample_sizes,learning_rate_sd, n_trials) %>%
-  mutate(i = 1:n()) %>%
-  ggplot(aes( x = i, y = rmp_est, shape = sample_sizes, col = sample_sizes)) + 
-  geom_point() + 
-  geom_errorbar(aes(ymin = rmp_lb, ymax = rmp_ub)) +
-  geom_hline(aes(yintercept =pop_rel)) +
-  coord_cartesian(ylim =c(0,1)) 
+# results_table %>%
+#   # filter(sample_sizes==1000) %>%
+#   # filter(n_trials ==200) %>%
+#   # filter(learning_rate_sd==.15) %>%
+#   mutate(
+#     sample_sizes = factor(sample_sizes),
+#     learning_rate_sd  = factor(learning_rate_sd),
+#     n_trials     = factor(n_trials),
+#     true_score_cor2 = cor_bayes_estimate_true^2
+#   ) %>%
+#   arrange(rmp_est) %>%
+#   group_by(sample_sizes,learning_rate_sd, n_trials) %>%
+#   mutate(i = 1:n()) %>%
+#   ggplot(aes( x = i, y = rmp_est, shape = sample_sizes, col = sample_sizes)) + 
+#   geom_point() + 
+#   geom_errorbar(aes(ymin = rmp_lb, ymax = rmp_ub)) +
+#   # geom_hline(aes(yintercept =pop_rel)) +
+#   coord_cartesian(ylim =c(0,1)) 
 
 
 results_table %>%
@@ -267,7 +272,7 @@ results_table %>%
   geom_errorbar(aes(ymin = rmp_lb, ymax = rmp_ub)) +
   geom_hline(aes(yintercept =pop_rel)) +
   coord_cartesian(ylim =c(0,1)) +
-  facet_wrap(~ learning_rate_sd+ n_trials+ sample_sizes)
+  facet_wrap(~ learning_rate_sd+ n_trials)
 
 
 
