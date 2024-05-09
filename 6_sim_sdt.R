@@ -8,7 +8,7 @@ library(future.apply)
 library(cmdstanr)
 
 
-run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = "0"))
+run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))
 seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))
 
 cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
@@ -37,7 +37,7 @@ sim_model = brms::brm(
   cores   = 1,
   chains  = 2,
   warmup  = 1000, 
-  iter    = 3000,
+  iter    = 2000,
   init    = .01,
   # prior = c(prior(constant(0.25), class = "b",  coef = "cond"),
   #           prior(constant(0.125), class = "sd", coef = "cond", group = "pps")),
@@ -56,7 +56,7 @@ params_list <- expand.grid(
   sample_sizes = c( 200, 500, 1000),
  # sample_sizes = c( 100),
   n_items = c(10, 20, 40),
-  run_rep = 1:run_rep_env  # 1 rep takes about 5 minutes (100 took 8.3 hours)
+  run_rep = 1:1  # 1 rep takes about 5 minutes (100 took 8.3 hours)
 ) # 8100 obs in 
 
 saveRDS(params_list, file = file.path("results","6_params_list_c.rds"))
@@ -89,7 +89,7 @@ future::plan(future::sequential())
 
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
-filename <- paste0("6_results_seed", seedval ,"_",timestamp,".rds")
+filename <- paste0("6_results_seed", seed_env ,"_",timestamp,".rds")
 saveRDS(results, file = file.path("results", filename))
 
 
