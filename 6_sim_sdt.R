@@ -6,6 +6,11 @@ library(tidyverse)
 library(future)
 library(future.apply)
 library(cmdstanr)
+
+
+run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = "0"))
+seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))
+
 cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
 # Source all simulation functions 
 # List all .R files in the folder
@@ -51,7 +56,7 @@ params_list <- expand.grid(
   sample_sizes = c( 200, 500, 1000),
  # sample_sizes = c( 100),
   n_items = c(10, 20, 40),
-  run_rep = 1:400  # 1 rep takes about 5 minutes (100 took 8.3 hours)
+  run_rep = 1:run_rep_env  # 1 rep takes about 5 minutes (100 took 8.3 hours)
 ) # 8100 obs in 
 
 saveRDS(params_list, file = file.path("results","6_params_list_c.rds"))
@@ -61,7 +66,7 @@ saveRDS(params_list, file = file.path("results","6_params_list_c.rds"))
 future::plan(future::multisession(workers = availableCores()))
 
 time_a = Sys.time()
-results <- future.apply::future_lapply(future.seed = FALSE, 1:nrow(params_list), function(i) {
+results <- future.apply::future_lapply(future.seed = seed_env, 1:nrow(params_list), function(i) {
   run_sdt_sim(
     i = i,
     sens_mean  = params_list$sens_mean[i],
@@ -84,10 +89,8 @@ future::plan(future::sequential())
 
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
-filename <- sprintf("6_results_%s.rds", timestamp)
+filename <- paste0("6_results_seed", seedval ,"_",timestamp,".rds")
 saveRDS(results, file = file.path("results", filename))
-
-
 
 
 
