@@ -52,7 +52,7 @@ params_list <- expand.grid(
   sens_mean      = c(.5),
   sens_sigma     = c(0,.2,.4),
   k_mean         = c(0),
-  k_sigma        = c(0, .20),
+  k_sigma        = c(.20), # removed the 0 condition
   sample_sizes = c( 200, 500, 1000),
  # sample_sizes = c( 100),
   n_items = c(10, 20, 40),
