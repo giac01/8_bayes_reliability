@@ -1,5 +1,5 @@
 # Load Stuff -------------------------------------------------------------------
-#rm(list=ls(all.names = T))
+# rm(list=ls(all.names = T))
 gc()
 
 #Sys.setenv(CMDSTAN_PATH = '/home/gb424/.cmdstan/cmdstan-2.34.1')
@@ -11,13 +11,10 @@ library(brms)
 library(tidyverse)
 library(future)
 library(future.apply)
-#library(cmdstanr)
-#source("0_set_cmdstan_path_cluster.R")
-#cmdstanr::set_cmdstan_path(path = "/home/gb424/cmdstan/cmdstan-2.34.1")
-#Sys.setenv(CMDSTAN_PATH = '/home/gb424/cmdstan/cmdstan-2.34.1')
-#library(cmdstanr)
-#≈cmdstanr::set_cmdstan_path(Sys.getenv("CMDSTAN_PATH"))
 library(cmdstanr)
+
+run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))
+seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))
 
 # Source all simulation functions 
 # List all .R files in the folder
@@ -58,7 +55,7 @@ lapply(loadings_list, rel_function)
 params_list <- expand.grid(
   loading_set  = 1:length(loadings_list),
   sample_sizes = c(200, 500, 2000),
-  run_rep = 1:400  
+  run_rep = 1:run_rep_env  
 ) 
 
 # 100 reps completed in 3 hours and 25 minutes 
@@ -69,6 +66,8 @@ saveRDS(params_list, file = file.path("results","4_params_list_aa.rds"))
 print(availableCores())
 
 future::plan(future::multisession(workers = availableCores()))
+# future::plan(future::multisession(workers = 8))
+
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = FALSE, 1:nrow(params_list), function(i) {
@@ -86,10 +85,9 @@ time_b - time_a
 
 future::plan(future::sequential())
 
-#saveRDS(results, file = file.path("results","4_results_tauinequiv_aa.rds"))
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
-filename <- sprintf("4_results_tauinequiv_%s.rds", timestamp)
+filename <- paste0("4_results_tauinequiv_seed", seed_env ,"_",timestamp,".rds")
 saveRDS(results, file = file.path("results", filename))
 
 
