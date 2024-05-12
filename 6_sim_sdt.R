@@ -56,7 +56,7 @@ params_list <- expand.grid(
   sample_sizes = c( 200, 500, 1000),
  # sample_sizes = c( 100),
   n_items = c(10, 20, 40),
-  run_rep = 1:1  # 1 rep takes about 5 minutes (100 took 8.3 hours)
+  run_rep = 1:run_rep_env  # 1 rep takes about 5 minutes (100 took 8.3 hours)
 ) # 8100 obs in 
 
 saveRDS(params_list, file = file.path("results","6_params_list_c.rds"))
