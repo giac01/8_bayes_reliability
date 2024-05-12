@@ -31,13 +31,11 @@ mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 
 # Example of creating a list of all combinations
 params_list <- expand.grid(
-  #n_pps               = c(200, 500, 1000),
   n_pps               = c(200),
   n_trials            = c(100, 200, 400),
   # n_trials            = c(200),
   learning_rate_mean  = 0.5,
   learning_rate_sd    = c(0, .2, 1),
-  # learning_rate_sd    = c(.2),
   decision_noise_mean = .75,
   decision_noise_sd   = .25,
   prob_real           = c(.75),    # probability of outcome 2 
@@ -45,6 +43,10 @@ params_list <- expand.grid(
                    # 
                    # 100 takes 1.25 days (.00001)
 ) 
+
+print(params_list)
+print(run_rep_env)
+print(seed_env)
 
 # Run code in parallel using future --------------------------------------------
 print(availableCores())
