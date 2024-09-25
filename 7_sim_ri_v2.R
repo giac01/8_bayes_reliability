@@ -44,6 +44,9 @@ params_list <- expand.grid(
                    # 100 takes 1.25 days (.00001)
 ) 
 
+# Note that above aren't the learning rate sd, to work it out use:
+# sd(g_normaluniform(400000000, .5, learning_rate_sd)
+
 print(params_list)
 print(run_rep_env)
 print(seed_env)

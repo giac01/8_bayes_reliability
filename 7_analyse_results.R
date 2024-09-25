@@ -10,7 +10,7 @@ rm(list = ls(all.names = TRUE))
 results_path = file.path("results","7_ri_results")
 
 results_files = list.files(results_path, 
-                           pattern = "^7_results_ri_seed3",
+                           pattern = "^7_results_ri_seed",
                            recursive = FALSE,
                            full.names = TRUE
 )
@@ -18,27 +18,6 @@ results_files = list.files(results_path,
 results = lapply(results_files[!grepl("pop",results_files)], function(x) readRDS(x))
 
 results = do.call("c", results)
-
-
-# results_pop = readRDS(file = results_files[grepl("pop",results_files)])
-
-# Sample size used in "population" simulations. 
-# results_pop[[1]]$settings$n_pps
-
-# Extract Population Reliability simulations -----------------------------------
-
-# results_pop[[1]]$settings$n_pps
-
-# simulated_reliabilities     = sapply(results_pop, function(x) x$cor_bayes_estimate_true$estimate^2)
-# simulated_reliabilities     = ifelse(is.na(simulated_reliabilities), 0,  simulated_reliabilities)
-# sample_sizes                = sapply(results_pop, function(x) x$settings$n_pps)
-# n_trials                    = sapply(results_pop, function(x) x$settings$n_trials)
-# learning_rate_mean          = sapply(results_pop, function(x) x$settings$learning_rate_mean)
-# learning_rate_sd            = sapply(results_pop, function(x) x$settings$learning_rate_sd)
-# decision_noise_mean         = sapply(results_pop, function(x) x$settings$decision_noise_mean)
-# decision_noise_sd           = sapply(results_pop, function(x) x$settings$decision_noise_sd)
-# 
-# settings_used = paste(n_trials,learning_rate_mean, learning_rate_sd, decision_noise_mean,decision_noise_sd, sep = "_")
 
 # Create results table----------------------------------------------------------
 did_model_run = rep(NA, length(results))
@@ -49,7 +28,6 @@ for(i in 1:length(results)){
 results = results[(did_model_run)]
 
 results_table = data.frame(i = 1:length(results))
-
 
 # Pop Reliability estimates
 # results_table$true_score_cor2         = simulated_reliabilities[match(results_table$settings_used,settings_used)]
@@ -112,38 +90,39 @@ results_table$settings_used_with_npps = paste(
 # results_table$pop_rel = simulated_reliabilities[match(results_table$settings_used, settings_used)]
 
 ## calculate LOO cross-validated true_score_cor  -----------------------------------
-results_table$true_score_cor2_loo = NA
-
-for (i in 1:nrow(results_table)){
-  results_table$true_score_cor2_loo[i] = results_table[-i,] %>%
-    dplyr::filter(settings_used_with_npps==results_table[-i,"settings_used_with_npps"]) %>% 
-    pull(true_score_cor2) %>%
-    mean()
-}
+# results_table$true_score_cor2_loo = NA
+# 
+# for (i in 1:nrow(results_table)){
+#   results_table$true_score_cor2_loo[i] = results_table[-i,] %>%
+#     dplyr::filter(settings_used_with_npps==results_table[-i,"settings_used_with_npps"]) %>% 
+#     pull(true_score_cor2) %>%
+#     mean()
+# }
 
 
 # Analysis of coverage/bias ---------------------------------------------------
 
 results_table %>%
   group_by(learning_rate_sd, n_trials, sample_sizes) %>%       # aggregating over sample-sizes & sens_mean
-  mutate(pop_rel = mean(true_score_cor2_loo)) %>% 
-  mutate(mean_rmp_est = mean(rmp_est)) %>% 
+  mutate(
+    pop_rel_loo = (sum(true_score_cor2) - true_score_cor2) / (n() - 1),
+    pop_rel     =  mean(true_score_cor2),
+    mean_rmp_est = mean(rmp_est)
+    ) %>% 
   mutate(
     est        = rmp_est,
     ub         = rmp_ub,
     lb         = rmp_lb,
-    difference = est - pop_rel,
-    ci_correct = (lb <= pop_rel & ub >= pop_rel),
+    difference = est - pop_rel_loo,
+    ci_correct = (lb <= pop_rel_loo & ub >= pop_rel_loo),
     ci_length  = ub - lb,
-    ci_mean_correct = (lb <= true_score_cor2_loo & ub >= true_score_cor2_loo),
+    ci_mean_correct = (lb <= pop_rel_loo & ub >= pop_rel_loo),
     ci_bias_elimated_correct = (lb <= mean_rmp_est & ub >= mean_rmp_est),
-    mean_rmp_est = mean(rmp_est)
   ) %>%
   summarise(
     n = n(),
     pop_rel     = mean(pop_rel),
     pop_rel_sd      = sd(pop_rel),
-    avg_cor2        = mean(true_score_cor2),
     mean        = mean(est),
     bias        = mean(difference),
     bias_se     = sqrt(1/(n*(n-1))*sum((est-mean)^2)),
@@ -154,7 +133,6 @@ results_table %>%
     coverage_se = sqrt((coverage*(1-coverage))/n),
     coverage_lb = coverage - 1.96*coverage_se,
     coverage_ub = coverage + 1.96*coverage_se,
-    coverage_true_score_cor = length(which(ci_mean_correct))/length(ci_mean_correct),
     coverage_bias_eliminated = length(which(ci_bias_elimated_correct))/length(ci_bias_elimated_correct),
     mean_ci_length = mean(ci_length),
     mean_ts_coverage = mean(avg_true_score_coverage)
@@ -162,24 +140,24 @@ results_table %>%
   ungroup() %>% 
   # knitr::kable(digits =2)
   select(-pop_rel_sd, -coverage_se) %>%
-  select(pop_rel,avg_cor2,sample_sizes,learning_rate_sd, everything()) %>%
+  select(pop_rel,sample_sizes,learning_rate_sd, everything()) %>%
   gt() %>%
   fmt(
     columns = where(is.numeric),
     fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
   ) %>%
   fmt_number(
-    columns = c(n, n_trials),
+    columns = c(n, n_trials, sample_sizes),
     decimals = 0
   ) %>%
   fmt_percent(
-    columns = starts_with("coverage"),
+    columns = c(starts_with("coverage"),mean_ts_coverage),
     decimals = 1
   ) %>%
   cols_label(
     sample_sizes ~ "{{n_obs}}",
     n            ~ "{{n_sim}}",      # avg_cor2     ~ "{{:rho:_:theta:,x^2}}",
-    avg_cor2      ~ "{{mean[:rho:_:theta:,x^2 ]}}",
+    # avg_cor2      ~ "{{mean[:rho:_:theta:,x^2 ]}}",
     pop_rel ~ "{{R_pop}}",
     n_trials      ~ "{{n_trials}}",
     bias           ~ "bias",
@@ -187,22 +165,42 @@ results_table %>%
     bias_ub  ~ "UB",
     coverage_lb  ~ "LB",
     coverage_ub  ~ "UB",
-    mean_ci_length ~ "Mean Length"
+    mean_ci_length ~ md("Mean<br>Length"),
+    coverage_bias_eliminated ~ md("Bias<br>Eliminated<br>Coverage"),
+    mean_ts_coverage ~ md("True<br>Score<br>Coverage"),
+    learning_rate_sd ~ "{{:sigma:_learnrate}}"
   )  %>%
   tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
   tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
-  tab_spanner(label = "Simulation Parameters", columns = c(pop_rel,avg_cor2,sample_sizes,learning_rate_sd)) %>%
-  tab_spanner(label = "Estimator Performance", columns = c(mean, mae, MSE, contains("bias"))) %>%
-  tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
+  tab_spanner(label = "Simulation Parameters", columns = c(pop_rel,sample_sizes,learning_rate_sd,n_trials,n)) %>%
+  tab_spanner(label = "Estimator Performance", columns = c(mean, mae, MSE, bias, bias_lb, bias_ub)) %>%
+  tab_spanner(label = "Credible Interval Performance", columns = c(coverage, coverage_lb, coverage_ub,mean_ci_length,coverage_bias_eliminated  )) %>%
+  cols_move(
+    columns = coverage_bias_eliminated,
+    after = mean_ci_length
+  ) %>%
   tab_footnote(
-    "{{R_pop}} = Simulated Population Reliability. MSE = Mean Squared Error. n = number of simulations. These results are averaged over the different sample sizes"
+    footnote = md("R<sub>pop</sub> = Simulated Population Reliability. 
+                    n<sub>obs</sub> = number of subjects per simulation.
+                    σ<sub>learnrate</sub> = standard deviation of true learning rates across subjects.
+                    n<sub>trials</sub> = number of trials completed per participant.
+                    n<sub>sim</sub> = number of simulations completed for this set of simulation parameters. 
+                    MSE = Mean Squared Error.
+                    R<sub>pop</sub> is average squared correlation between the posterior mean estimates and the true score estimates across the simulations.
+                    Coverage is the proportion of times the 95% credible intervals include the population reliability, which shoud be around 95%.
+                    True score coverate is the poportion of times the 95% credible interval for each subject's learning rate contains the true learning rate for that subject.
+                  "
+    )
   ) %>%
   tab_style(
     style = cell_fill(color = "lightgray"),
     locations = cells_body(
       columns = everything(),
-      rows = which((learning_rate_sd == .200))
+      rows = which((n_trials == 100))
     )
+  ) %>%
+  tab_options(
+    table.width = pct(35)
   ) %>%
   gt::cols_hide(c(mae, bias_se, mean))
 
@@ -267,12 +265,13 @@ results_table %>%
   arrange(rmp_est) %>%
   # group_by(sample_sizes,learning_rate_sd, n_trials) %>%
   mutate(i = 1:n()) %>%
-  ggplot(aes( x = i, y = rmp_est, shape = sample_sizes, col = sample_sizes)) + 
+  ggplot(aes( x = i, y = rmp_est, shape = sample_sizes, col = n_trials)) + 
   geom_point() + 
-  geom_errorbar(aes(ymin = rmp_lb, ymax = rmp_ub)) +
-  geom_hline(aes(yintercept =pop_rel)) +
-  coord_cartesian(ylim =c(0,1)) +
-  facet_wrap(~ learning_rate_sd+ n_trials)
+  geom_errorbar(aes(ymin = rmp_lb, ymax = rmp_ub), alpha = .03) +
+  geom_hline(aes(yintercept =pop_rel, col = n_trials), size = 1.2) +
+  coord_cartesian(ylim =c(-.12,1)) +
+  theme_bw() +
+  facet_wrap(~ learning_rate_sd)
 
 
 
