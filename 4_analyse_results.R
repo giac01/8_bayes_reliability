@@ -28,13 +28,13 @@ loadings_list_pretty2
 
 results_path = file.path("results","4_factor_inequivalent_results")
 results_files = list.files(results_path, 
-                           pattern = "^4_results_tauinequiv_",
+                           pattern = "^4_results_tauinequiv_seed",
                            recursive = FALSE,
                            full.names = TRUE
                            )
 results = lapply(results_files, function(x) readRDS(x))
 
-results = results[[1]]
+results = do.call("c", results)
 # results = unlist(results)
 
 ## Create results table for simulation results ---------------------------------
@@ -57,9 +57,9 @@ results_table$pop_ss_loading  = sapply(results, function(x) sum(x$settings$loadi
 results_table$sec_min_loading = sapply(results, function(x) sort(x$settings$loadings, decreasing = TRUE)[2]) %>% as.numeric()
 results_table$third_min_loading =  sapply(results, function(x) sort(x$settings$loadings, decreasing = TRUE)[3]) %>% as.numeric()
 
-results_table$rmp_est         = sapply(results, function(x) x$r_est[1] )%>% as.numeric()
-results_table$rmp_lb          = sapply(results, function(x) x$r_est[2]) %>% as.numeric()
-results_table$rmp_ub          = sapply(results, function(x) x$r_est[3]) %>% as.numeric()
+results_table$rmp_est         = sapply(results, function(x) x$rmp_est[1] )%>% as.numeric()
+results_table$rmp_lb          = sapply(results, function(x) x$rmp_est[2]) %>% as.numeric()
+results_table$rmp_ub          = sapply(results, function(x) x$rmp_est[3]) %>% as.numeric()
 results_table$rmp_ci_length   = results_table$rmp_ub - results_table$rmp_lb
 # results_table$rmp_ci_contain  = (results_table$pop_rel > results_table$rmp_lb) & (results_table$pop_rel < results_table$rmp_ub) 
 
@@ -136,7 +136,7 @@ results_table_cleaned %>%
          -mean, -mean_se, -mean_ub, -mean_lb,
          -bias_se
          ) %>%
-  filter(name == "rmp") %>%
+  # filter(name == "rmp") %>%
   gt() %>%
   gt::cols_move_to_start(name) %>%
   fmt(
@@ -172,17 +172,35 @@ results_table_cleaned %>%
   tab_spanner(label = "Estimator Performance", columns = c( bias, bias_lb, bias_ub, MSE)) %>%
   tab_spanner(label = "Confidence/Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   tab_footnote(
-    "R = population reliability. MSE = Mean Squared Error. Mean Length = Mean length of credible/confidence interval. "
+    footnote = md(" n<sub>sim</sub> = number of simulations completed for this set of simulation parameters. 
+                    n<sub>obs</sub> = number of subjects per simulation.
+                    MSE = Mean Squared Error.
+                    Mean Length = Mean Length of credible or confidence interval. 
+                    The percentage of simulations where the MCMC algorithm had at least one divergent transition or E-BFMI value of less than .20 are shown.
+                    "
+    )) %>%
+  tab_style(
+    style = cell_fill(color = "lightgray"),
+    locations = cells_body(
+      columns = everything(),
+      rows = which((sample_sizes ==200 & name == "h"))
+      # rows = which(name == "rmp")
+    )
   ) %>%
-  # tab_style(
-  #   style = cell_fill(color = "lightgray"),
-  #   locations = cells_body(
-  #     columns = everything(),
-  #     # rows = which((sample_sizes ==200 | sample_sizes == 2000))
-  #     rows = which(name == "rmp")
-  #   )
-  # ) %>%
-  gt::cols_hide(c(name)) %>%
+  tab_options(
+    table.width = pct(49)
+    # table.width = pct(38)
+    
+  ) %>%
+  gt::cols_hide(c(`Mean True Score Coverage` )) %>%
+  
+  # gt::cols_hide(c(name,`Mean True Score Coverage` )) %>%
+  cols_width(
+    c(loadings_list_pretty) ~ pct(14),  # Set width of 'Name' column to 100 pixels
+    c(perc_diag_divergences_binary) ~ pct(8),  # Set width of 'Name' column to 100 pixels
+    c(perc_diag_ebfmi_binary) ~ pct(8)  # Set width of 'Occupation' column to 150 pixels
+  )
+
 
 
 gtsave(filename = file.path("results","4_table_A.html"))

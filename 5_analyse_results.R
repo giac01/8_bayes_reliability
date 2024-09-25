@@ -125,7 +125,7 @@ results_table_cleaned %>%
     decimals = 1
   ) %>%
   cols_label(
-    pop_rel      ~ "R",
+    pop_rel      ~ "{{R_pop}}",
     n_items      ~ "{{n_items}}",
     sample_sizes ~ "{{n_obs}}",
     n            ~ "{{n_sim}}",
@@ -145,8 +145,14 @@ results_table_cleaned %>%
   tab_spanner(label = "Estimator Performance", columns = c( bias, bias_lb, bias_ub, MSE)) %>%
   tab_spanner(label = "Confidence/Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   tab_footnote(
-    "R = population reliability. MSE = Mean Squared Error. Mean Length = Mean length of credible/confidence interval. "
-  ) %>%
+    footnote = md(" n<sub>items</sub> = number of items completed per participant.
+                    n<sub>sim</sub> = number of simulations completed for this set of simulation parameters. 
+                    n<sub>obs</sub> = number of subjects per simulation.
+                    MSE = Mean Squared Error.
+                    Mean Length = Mean Length of credible or confidence interval. 
+                    The percentage of simulations where the MCMC algorithm had at least one divergent transition or E-BFMI value of less than .20 are shown.
+                    "
+    )) %>%
   tab_style(
     style = cell_fill(color = "lightgray"),
     locations = cells_body(
@@ -154,7 +160,10 @@ results_table_cleaned %>%
       # rows = which((sample_sizes ==200 | sample_sizes == 2000))
       rows = which(name == "RMP")
     )
-  ) %>% 
+  ) %>%
+  tab_options(
+    table.width = pct(35)
+  ) %>%
   gt::cols_hide(c(pop_rel)) 
   
   
