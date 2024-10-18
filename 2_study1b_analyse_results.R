@@ -102,6 +102,7 @@ results_table_cleaned =  results_table_long %>%
   summarise(
     pop_rel     = mean(pop_rel),
     pop_rel_sd  = sd(pop_rel, na.rm = TRUE),
+    mean_true_score_cor2 = mean(true_score_cor2),
     n           = n(),
     mean        = mean(est),
     mean_se     = sd(est)/sqrt(n),
@@ -129,6 +130,8 @@ results_table_cleaned =  results_table_long %>%
   )
 
 results_table_cleaned[which(results_table_cleaned$name=="h"),c("perc_diag_divergences_binary","perc_diag_ebfmi_binary")] = NA
+results_table_cleaned[which(results_table_cleaned$name=="h"),c("mean_true_score_cor2")] = NA
+results_table_cleaned$name[results_table_cleaned$name=="rmp"] = "rmu"
 
 results_table_cleaned %>%
   select(-coverage_se, -loading_set, - pop_rel_sd, 
@@ -152,7 +155,9 @@ results_table_cleaned %>%
     decimals = 1
   ) %>%
   cols_label(
+    name         ~ "Est",
     pop_rel      ~ "R",
+    mean_true_score_cor2 ~ "{{R_(*ρ^2*)}}",
     loadings_list_pretty ~ "Loadings",
     sample_sizes ~ "{{n_obs}}",
     n            ~ "{{n_sim}}",
@@ -168,7 +173,7 @@ results_table_cleaned %>%
   
   tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
   tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
-  tab_spanner(label = "Simulation Parameters", columns = c(pop_rel, loadings_list_pretty,sample_sizes, n)) %>%
+  tab_spanner(label = "Simulation Parameters", columns = c(pop_rel, mean_true_score_cor2, loadings_list_pretty,sample_sizes, n)) %>%
   tab_spanner(label = "Estimator Performance", columns = c( bias, bias_lb, bias_ub, MSE)) %>%
   tab_spanner(label = "Confidence/Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   tab_footnote(
@@ -189,21 +194,26 @@ results_table_cleaned %>%
   ) %>%
   tab_options(
     table.width = pct(49)
+
     # table.width = pct(38)
     
   ) %>%
   gt::cols_hide(c(`Mean True Score Coverage` )) %>%
-  
   # gt::cols_hide(c(name,`Mean True Score Coverage` )) %>%
   cols_width(
-    c(loadings_list_pretty) ~ pct(14),  # Set width of 'Name' column to 100 pixels
+    c(loadings_list_pretty) ~ pct(10),  # Set width of 'Name' column to 100 pixels
     c(perc_diag_divergences_binary) ~ pct(8),  # Set width of 'Name' column to 100 pixels
-    c(perc_diag_ebfmi_binary) ~ pct(8)  # Set width of 'Occupation' column to 150 pixels
-  )
-
+    c(perc_diag_ebfmi_binary) ~ pct(8),  # Set width of 'Occupation' column to 150 pixels
+    everything() ~ px(.4)
+  ) %>%
+  opt_horizontal_padding(scale = 0) %>%
+  # gtsave(filename = file.path("results","4_table_withcoefficient_h.docx"))
+  gtsave(filename = file.path("results","4_table_A.html"))
 
 
 gtsave(filename = file.path("results","4_table_A.html"))
+gtsave(filename = file.path("results","4_table_withcoefficient_h.docx"))
+
 
 ### Smaller table with fewer comparisons ---------------------------------------
 # 
