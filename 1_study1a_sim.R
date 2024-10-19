@@ -29,7 +29,7 @@ params_list <- expand.grid(
   tau_equivalence = c(TRUE),
   sample_sizes = c(50, 100, 500, 2000),
   n_items = c(3, 6, 12),
-  run_rep = 1:1000
+  run_rep = 1:2500
 ) 
 
 # 250 reps took 3 hours and 25 minuntes 
@@ -63,7 +63,7 @@ print(availableCores(logical = TRUE))
 future::plan(future::multisession(workers = availableCores()))
 
 time_a = Sys.time()
-results <- future.apply::future_lapply(future.seed = 10, 1:nrow(params_list), function(i) {
+results <- future.apply::future_lapply(future.seed = 100, 1:nrow(params_list), function(i) {
   run_factor_sim_2(
     i = i,
     n = params_list$sample_sizes[i], 

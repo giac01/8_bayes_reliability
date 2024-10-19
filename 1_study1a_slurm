@@ -13,7 +13,7 @@
 #SBATCH -J 5_sim_tauequiv
 #! Which project should be charged:
 #SBATCH -A BLAKEMORE-SL3-CPU
-#SBATCH -p icelake
+#SBATCH -p icelake-himem
 #! How many whole nodes should be allocated?
 #SBATCH --nodes=1
 #! How many (MPI) tasks will there be in total? (<= nodes*76)
@@ -21,7 +21,7 @@
 #! 3380 MiB of memory per CPU.
 #SBATCH --ntasks=76
 #! How much wallclock time will be required?
-#SBATCH --time=5:00:00
+#SBATCH --time=12:00:00
 #! What types of email messages do you wish to receive?
 #SBATCH --mail-type=BEGIN,END,FAIL
 #! Where should the email be sent?
@@ -59,7 +59,7 @@ module load rhel8/default-icl              # REQUIRED - loads the basic environm
 module load singularity/current
 
 #! Full path to application executable: 
-application="singularity exec 6_ptsd_v4.sif Rscript 5_sim_factor_tau_equiv.R"
+application="singularity exec 6_ptsd_v4.sif Rscript 1_study1a_sim.R"
 
 #! Run options for the application:
 options=""
