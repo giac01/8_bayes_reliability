@@ -10,16 +10,16 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J 7_sim_reinforcementlearning_500rep_icelake
+#SBATCH -J study3_icelake_rep1
 #! Which project should be charged:
 #SBATCH -A BLAKEMORE-SL3-CPU
-#SBATCH -p icelake-himem
+#SBATCH -p icelake
 #! How many whole nodes should be allocated?
 #SBATCH --nodes=1
 #! How many (MPI) tasks will there be in total? (<= nodes*76)
 #! The Ice Lake (icelake) nodes have 76 CPUs (cores) each and
 #! 3380 MiB of memory per CPU.
-#SBATCH --ntasks=76
+#SBATCH --ntasks=2
 #! How much wallclock time will be required?
 #SBATCH --time=12:00:00
 #! What types of email messages do you wish to receive?
@@ -58,8 +58,8 @@ module load rhel8/default-icl              # REQUIRED - loads the basic environm
 #! Insert additional module load commands after this line if needed:
 module load singularity/current
 
-export RUN_REP="250"
-export SEED_ENV="1"
+export RUN_REP="1"
+export SEED_ENV="9991"
 
 #! Full path to application executable: 
 application="singularity exec 6_ptsd_v4.sif Rscript 4_study3_sim.R"
