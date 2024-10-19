@@ -5,8 +5,8 @@ rm(list=ls(all.names = T))
 gc()
 
 
-run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = "0"))
-seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))
+run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = "2"))
+seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = "2"))
 
 cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
 
@@ -31,11 +31,11 @@ mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 
 # Example of creating a list of all combinations
 params_list <- expand.grid(
-  n_pps               = c(200),
-  n_trials            = c(100, 200, 400),
+  n_pps               = c(50),
+  n_trials            = c(100, 150, 250), # removed 400
   # n_trials            = c(200),
   learning_rate_mean  = 0.5,
-  learning_rate_sd    = c(0, .2, 1),
+  learning_rate_sd    = c(0, .4, 1),
   decision_noise_mean = .75,
   decision_noise_sd   = .25,
   prob_real           = c(.75),    # probability of outcome 2 
@@ -54,8 +54,8 @@ print(seed_env)
 # Run code in parallel using future --------------------------------------------
 print(availableCores())
 
- future::plan(future::multisession(workers = availableCores()))
-#future::plan(future::multisession(workers =  8))
+ # future::plan(future::multisession(workers = availableCores()))
+future::plan(future::multisession(workers =  8))
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = seedval, 1:nrow(params_list), function(i) {
@@ -81,8 +81,9 @@ time_b - time_a
 
 future::plan(future::sequential())
 
+
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
-filename <- paste0("7_results_ri_seed", seedval ,"_",timestamp,".rds")
+filename <- paste0("study3_results_ri_seed", seedval ,"_",timestamp,".rds")
 saveRDS(results, file = file.path("results", filename))
 
 
