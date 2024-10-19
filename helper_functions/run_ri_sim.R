@@ -15,8 +15,6 @@ run_ri_sim = function(
     additional_tests = TRUE,
     init_stan = "normal"
 ){
-    # warnings
-  # set.seed(10)
   
   if (is.null(i)) stop("i is null")
   if (is.null(n_pps)) stop("n_pps is null")
@@ -32,7 +30,6 @@ run_ri_sim = function(
   if (is.null(save_results)) stop("save_results is null")  # Though this has a default value and typically wouldn't be null.
   
   prob_real = c(1-prob_real, prob_real)
-  
   
   # browser()
   results = list()
@@ -96,18 +93,16 @@ run_ri_sim = function(
     }
   }
   
-  internal_results = mod$variational(
+  internal_results = mod$sample(    
     data = stan_data, 
-    seed = 123,
     init = init_values_muphi,
-    draws = n_draws,
-    # tol_rel_obj = .0001,
-    # iter = 40000,
     
-    tol_rel_obj = .0001, # increased by 1/10 (again)
-    iter = 40000,
-    algorithm = "meanfield",
-    save_latent_dynamics = TRUE
+    seed = 123,
+    chains = 2,
+    parallel_chains = 1,
+    refresh = 500, 
+    iter_warmup = 1000,
+    iter_sampling = 1000
   )
    
   model_exists = (length(internal_results$output_files())!=0)
@@ -127,8 +122,11 @@ run_ri_sim = function(
   
   if (additional_tests == TRUE & model_exists) {
 
-    learning_rate_estimates = internal_results$draws(variables = "A") %>% as.data.frame()
-    # learning_rate_estimates = internal_results$draws(variables = "learning_rate") %>% as.data.frame()
+    learning_rate_estimates = internal_results$draws(variables = "A") %>% 
+                              posterior::as_draws_df() %>% 
+                              select(-.chain, -.iteration, -.draw)
+    
+    # CRASH HERE!
     learning_rate_estimates = learning_rate_estimates %>% 
                               `colnames<-`(c(1:n_pps)) %>%
                               pivot_longer(cols = everything(),
@@ -156,9 +154,21 @@ run_ri_sim = function(
   if (model_exists){
     results[["diagnostics"]][["model_name"]] = internal_results$metadata()$model_name
 
-    x = read.csv(internal_results$latent_dynamics_files(), skip = 32)
+    # x = read.csv(internal_results$latent_dynamics_files(), skip = 32)
     
-    results[["diagnostics"]][["max_iter"]] = max(x$X..iter)
+    # results[["diagnostics"]][["max_iter"]] = max(x$X..iter)
+    
+    # Diagnostics using cmdstanr
+    diagnostics = internal_results$diagnostic_summary()
+    
+    # Extract divergences
+    results[["diagnostics"]][["diag_divergences"]]        = sum(diagnostics$num_divergent)
+    
+    # Check HMC diagnostics using cmdstanr
+    results[["diagnostics"]][["diagnostics_divergences"]] = sum(diagnostics$num_divergent)
+    results[["diagnostics"]][["diagnostics_treedepth"]]   = sum(diagnostics$num_max_treedepth)
+    results[["diagnostics"]][["diagnostics_ebfmi"]]       = diagnostics$ebfmi
+    
 
     results[["cor_bayes_estimate_true"]] = cor.test(learning_rate_estimates$y, learning_rate_estimates$true_learning_rate)
   
@@ -187,7 +197,7 @@ run_ri_sim = function(
        slice(which(!grepl("^decision_noise\\[",.$variable))) 
    }
 
-  if (save_results==TRUE & model_exists){
+  if (save_results & model_exists){
     results[["stan_results"]] = internal_results
   }
 

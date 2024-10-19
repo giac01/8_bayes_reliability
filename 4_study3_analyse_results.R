@@ -7,10 +7,10 @@ rm(list = ls(all.names = TRUE))
 
 # Load Data --------------------------------------------------------------------
 
-results_path = file.path("results","7_ri_results")
+results_path = file.path("results","study3_results")
 
 results_files = list.files(results_path, 
-                           pattern = "^7_results_ri_seed",
+                           pattern = "^study3_results_seed",
                            recursive = FALSE,
                            full.names = TRUE
 )
@@ -61,10 +61,13 @@ results_table$cor_bayes_estimate_true_lb[is.na(results_table$cor_bayes_estimate_
 results_table$cor_bayes_estimate_true_ub = sapply(results, function(x) x$cor_bayes_estimate_true$conf.int[2]) %>% as.numeric()
 results_table$cor_bayes_estimate_true_ub[is.na(results_table$cor_bayes_estimate_true_ub)] = 0
 
-# Diagnostics 
-results_table$max_iter = sapply(results, function(x) x$diagnostics$max_iter) %>% as.numeric()
+#Diagnostics
 
-results[[1]]$diagnostics$max_iter
+results_table$diag_divergences        = sapply(results, function(x) x$diagnostics$diag_divergences) %>% as.numeric()
+results_table$diag_divergences_binary = as.numeric(results_table$diag_divergences>0)
+results_table$diag_ebfmi              = sapply(results, function(x) length(which(x$diagnostics$diagnostics_ebfmi<.2)))
+results_table$diag_ebfmi_binary       = as.numeric(results_table$diag_ebfmi>0)
+
 
 # Add population reliability
 
@@ -135,7 +138,9 @@ results_table %>%
     coverage_ub = coverage + 1.96*coverage_se,
     coverage_bias_eliminated = length(which(ci_bias_elimated_correct))/length(ci_bias_elimated_correct),
     mean_ci_length = mean(ci_length),
-    mean_ts_coverage = mean(avg_true_score_coverage)
+    mean_ts_coverage = mean(avg_true_score_coverage),
+    perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
+    perc_diag_ebfmi_binary       = sum(diag_ebfmi_binary)/n
   )  %>%
   ungroup() %>% 
   # knitr::kable(digits =2)
@@ -154,6 +159,10 @@ results_table %>%
     columns = c(starts_with("coverage"),mean_ts_coverage),
     decimals = 1
   ) %>%
+  fmt_percent(
+    columns = c(starts_with("coverage"),contains("perc_diag")),
+    decimals = 1
+  ) %>%
   cols_label(
     sample_sizes ~ "{{n_obs}}",
     n            ~ "{{n_sim}}",      # avg_cor2     ~ "{{:rho:_:theta:,x^2}}",
@@ -168,7 +177,9 @@ results_table %>%
     mean_ci_length ~ md("Mean<br>Length"),
     coverage_bias_eliminated ~ md("Bias<br>Eliminated<br>Coverage"),
     mean_ts_coverage ~ md("True<br>Score<br>Coverage"),
-    learning_rate_sd ~ "{{:sigma:_learnrate}}"
+    learning_rate_sd ~ "{{:sigma:_learnrate}}",
+    perc_diag_divergences_binary ~ md("% Divergent<br>Transitions"),
+    perc_diag_ebfmi_binary ~   md("% Low<br>E-BFMI")
   )  %>%
   tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
   tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
