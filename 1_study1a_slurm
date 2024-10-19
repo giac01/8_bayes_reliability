@@ -58,6 +58,9 @@ module load rhel8/default-icl              # REQUIRED - loads the basic environm
 #! Insert additional module load commands after this line if needed:
 module load singularity/current
 
+export RUN_REP="2500"
+export SEED_ENV="156"
+
 #! Full path to application executable: 
 application="singularity exec 6_ptsd_v4.sif Rscript 1_study1a_sim.R"
 
