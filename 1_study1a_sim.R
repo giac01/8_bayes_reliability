@@ -11,6 +11,9 @@ library(cmdstanr)
 # List all .R files in the folder
 list.files(file.path("helper_functions"), pattern = "\\.R$", full.names = TRUE) %>%
   lapply(., function(x) {source(x)})
+  
+run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))
+seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))
 
 # Compile stan model -----------------------------------------------------------
 
@@ -29,10 +32,8 @@ params_list <- expand.grid(
   tau_equivalence = c(TRUE),
   sample_sizes = c(50, 100, 500, 2000),
   n_items = c(3, 6, 12),
-  run_rep = 1:2500
+  run_rep = 1:run_rep_env
 ) 
-
-# 250 reps took 3 hours and 25 minuntes 
 
 params_list$loadings_set = count_so_far(params_list$sample_sizes)
 
@@ -63,7 +64,7 @@ print(availableCores(logical = TRUE))
 future::plan(future::multisession(workers = availableCores()))
 
 time_a = Sys.time()
-results <- future.apply::future_lapply(future.seed = 100, 1:nrow(params_list), function(i) {
+results <- future.apply::future_lapply(future.seed = seed_env, 1:nrow(params_list), function(i) {
   run_factor_sim_2(
     i = i,
     n = params_list$sample_sizes[i], 
