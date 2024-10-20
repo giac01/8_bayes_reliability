@@ -5,7 +5,7 @@ gc()
 #Sys.setenv(CMDSTAN_PATH = '/home/gb424/.cmdstan/cmdstan-2.34.1')
 #library(cmdstanr)
 #cmdstanr::set_cmdstan_path(Sys.getenv("CMDSTAN_PATH"))
-cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
+# cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
 
 library(brms)
 library(tidyverse)
@@ -67,7 +67,6 @@ print(availableCores())
 
 future::plan(future::multisession(workers = availableCores()))
 # future::plan(future::multisession(workers = 8))
-
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = FALSE, 1:nrow(params_list), function(i) {

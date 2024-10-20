@@ -1,1 +1,15 @@
 *.ignore
+*.Rproj.user
+*.Rhistory
+*.RData
+*.Ruserdata
+*99*
+data/*
+plots/*
+*.rda
+*.rds
+*.Rdata
+*.rdata
+*.html
+*.Rda
+*.Rds
