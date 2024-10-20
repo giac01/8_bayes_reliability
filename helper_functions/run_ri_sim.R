@@ -1,4 +1,3 @@
-
 run_ri_sim = function(
     i,
     n_pps,
@@ -202,7 +201,7 @@ run_ri_sim = function(
   }
 
   if ((i %% 5)==0){
-    write.csv(data.frame(y=""), file.path("progress_sdt",paste0(i,".ignore")))
+    write.csv(data.frame(y=""), file.path("progress_ri",paste0(i,".ignore")))
   }
 
   return(results)
