@@ -1,11 +1,6 @@
 # Load Stuff -------------------------------------------------------------------
-# rm(list=ls(all.names = T))
+rm(list=ls(all.names = T))
 gc()
-
-#Sys.setenv(CMDSTAN_PATH = '/home/gb424/.cmdstan/cmdstan-2.34.1')
-#library(cmdstanr)
-#cmdstanr::set_cmdstan_path(Sys.getenv("CMDSTAN_PATH"))
-# cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
 
 library(brms)
 library(tidyverse)
@@ -23,7 +18,7 @@ list.files(file.path("helper_functions"), pattern = "\\.R$", full.names = TRUE) 
 
 # Compile stan model -----------------------------------------------------------
 
-mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v5.stan"))
+mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v7.stan"))
 
 # Create Parameter Table ---------------------------------------------------
 
@@ -39,11 +34,11 @@ rel_function = function(l){
 
 loadings_list = list(
   c( 0, 0, 0, 0, 0, 0),
+  c(.1,.1,.1,.1,.1),
   c(.3,.2,.1),
-  c(.3,.2,.1,.1,.1,.1),
   c(.4,.3,.3,.2,.1,.0),
+  c(.4,.4,.4,.4),
   c(.6,.5,.3,.1,.1,.1),
-  c(.7,.6,.6,.5,.4),
   c(.7,.6,.5,.5,.4,.4,.4,.3,.3)
 )
 
@@ -54,7 +49,7 @@ lapply(loadings_list, rel_function)
 # Example of creating a list of all combinations
 params_list <- expand.grid(
   loading_set  = 1:length(loadings_list),
-  sample_sizes = c(200, 500, 2000),
+  sample_sizes = c(250, 500, 1000),
   run_rep = 1:run_rep_env  
 ) 
 
@@ -65,8 +60,8 @@ saveRDS(params_list, file = file.path("results","4_params_list_aa.rds"))
 # Run code in parallel using future --------------------------------------------
 print(availableCores())
 
-future::plan(future::multisession(workers = availableCores()))
-# future::plan(future::multisession(workers = 8))
+# future::plan(future::multisession(workers = availableCores()))
+future::plan(future::multisession(workers = 8))
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = FALSE, 1:nrow(params_list), function(i) {
@@ -86,7 +81,7 @@ future::plan(future::sequential())
 
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
-filename <- paste0("4_results_tauinequiv_seed", seed_env ,"_",timestamp,".rds")
+filename <- paste0("2_study1b_seed", seed_env ,"_",timestamp,".rds")
 saveRDS(results, file = file.path("results", filename))
 
 

@@ -13,3 +13,7 @@ plots/*
 *.html
 *.Rda
 *.Rds
+.Rproj.user
+machine.file*
+*.out
+*.docx

@@ -1,5 +1,3 @@
-# run_factor_sim_2
-
 run_factor_sim_2 = function(
     i,
     n,
@@ -61,6 +59,7 @@ run_factor_sim_2 = function(
   # Fit Model 
   
   dat_stan = list(
+    lambda_sd_prior_sd = .20,
     n      = nrow(dat_long),
     pps_n  = length(unique(dat_long$pps)),
     item_n = length(unique(dat_long$name)),
@@ -70,10 +69,15 @@ run_factor_sim_2 = function(
   )
   
   if (use_init){                                                                # Initialization has a HUGE impact on small sample performance! 
-    init_fun <- function() list(theta  = rnorm(nrow(dat), 0,0),
-                                lambda = rnorm(length(loadings),.5,0),
-                                sigma  = rnorm(length(loadings),.5,0),
-                                sigma_add = rnorm(length(loadings),.01, 0)
+    init_fun <- function() list(
+      theta = rnorm(nrow(dat), 0, 0.1),
+      # lambda = rnorm(length(l),.5,0),
+      # lambda_raw = rnorm(length(l), .1, 0),
+      sigma_add = rnorm(length(loadings), .01, 0),
+      lambda_sd = rnorm(1, .1, 0),
+      lambda_mean = rnorm(1, 1, 0),
+      lambda_raw_1 = rnorm(1, .1, 0),
+      lambda_raw_rest = rnorm(length(loadings)-1,0,0)
     )
   }
   
@@ -84,9 +88,9 @@ run_factor_sim_2 = function(
     chains = 2,
     parallel_chains = 1,
     refresh = 500, # print update every 500 iters
-    iter_warmup = 1500,
-    iter_sampling = 2000,
-    adapt_delta = .95
+    iter_warmup = 1000,
+    iter_sampling = 1500,
+    adapt_delta = .97
   )
   
   # Calculate coefficient H using posterior draws of mcmc model 
