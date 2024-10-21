@@ -68,6 +68,10 @@ results_table$h_lb            = sapply(results, function(x) x$h_reliability$ci[1
 results_table$h_ub            = sapply(results, function(x) x$h_reliability$ci[2])%>% as.numeric()
 # results_table$h_ci_contain    = (results_table$pop_rel > results_table$h_lb) & (results_table$pop_rel < results_table$h_ub) 
 
+results_table$a_est           = sapply(results, function(x) x$alpha_reliability$est)%>% as.numeric()
+results_table$a_lb            = sapply(results, function(x) x$alpha_reliability$ci.lower)%>% as.numeric()
+results_table$a_ub            = sapply(results, function(x) x$alpha_reliability$ci.upper)%>% as.numeric()
+
 # Other coverage statistics
 
 results_table$true_score_cor2              = sapply(results, function(x) x$true_score_cor$estimate^2) %>% as.numeric()
@@ -88,7 +92,11 @@ results_table$diag_ebfmi_binary = as.numeric(results_table$diag_ebfmi>0)
 results_table_long = results_table %>%
   # select(-any_of(c(starts_with("diag")))) %>%
   rowid_to_column() %>%
-  pivot_longer(cols = c(rmp_est, h_est, rmp_lb, h_lb, rmp_ub, h_ub), names_to = c("name", ".value"), names_pattern = "(rmp|h)_(.*)") 
+  pivot_longer(cols = c(rmp_est, h_est, a_est,
+                        rmp_lb, h_lb, a_lb,
+                        rmp_ub, h_ub, a_ub
+                        
+                        ), names_to = c("name", ".value"), names_pattern = "(rmp|h|a)_(.*)") 
 
 ## Comparison between RMP and H ------------------------------------------------
 
@@ -100,28 +108,58 @@ results_table_cleaned =  results_table_long %>%
     ci_length  = ub - lb
   ) %>%
   summarise(
+    
     pop_rel     = mean(pop_rel),
     pop_rel_sd  = sd(pop_rel, na.rm = TRUE),
     mean_true_score_cor2 = mean(true_score_cor2),
+    
     n           = n(),
+    
+    # Mean Estimate
     mean        = mean(est),
     mean_se     = sd(est)/sqrt(n),
     mean_lb     = mean - qnorm(0.975)*mean_se,
     mean_ub     = mean + qnorm(0.975)*mean_se,
+    
+    # Empirical Standard Error 
+    EmpSE       = sd(est),
+    EmpSE_se    = EmpSE/sqrt(2*(n-1)),
+    EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
+    EmpSE_ub    = EmpSE - qnorm(0.975)*EmpSE_se,
+    
+    #bias
     bias        = mean(difference),
     bias_se     = sqrt(1/(n*(n-1))*sum((est-mean)^2)),
     bias_lb     = bias - qnorm(0.975)*bias_se,
     bias_ub     = bias + qnorm(0.975)*bias_se,
+    
+    # Mean absolute deviation
     mad         = mean(abs(difference)),
+    
+    # Mean Squared Error
     MSE         = mean((difference)^2),
+    MSE_se      = sqrt(sum((difference^2-MSE)^2)/(n*(n-1))),
+    MSE_lb      = MSE - qnorm(0.975)*MSE_se,
+    MSE_ub      = MSE - qnorm(0.975)*MSE_se,
+    
+    #Coverage
     coverage    = length(which(ci_correct))/length(ci_correct),
     coverage_se = sqrt((coverage*(1-coverage))/n),
     coverage_lb = coverage - qnorm(0.975)*coverage_se,
     coverage_ub = coverage + qnorm(0.975)*coverage_se,
+    
+    # Bias corrected coverage 
+    # cove_cor   = length(which(ci_bias_elimated_correct))/length(ci_bias_elimated_correct),
+    # cove_cor   = length(which(ci_bias_elimated_correct))/length(ci_bias_elimated_correct),
+    # cove_cor   = length(which(ci_bias_elimated_correct))/length(ci_bias_elimated_correct),
+    # 
+    
     mean_ci_length = mean(ci_length),
-    `Mean True Score Coverage` = mean(true_score_coverage),
+    
+    `Mean True Score Coverage`   = mean(true_score_coverage),
     perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
     perc_diag_ebfmi_binary       = sum(diag_ebfmi_binary)/n
+    
   ) %>%
   ungroup() %>%
   mutate(
@@ -129,9 +167,11 @@ results_table_cleaned =  results_table_long %>%
     loadings_list_pretty2 = loadings_list_pretty2[loading_set]
   )
 
-results_table_cleaned[which(results_table_cleaned$name=="h"),c("perc_diag_divergences_binary","perc_diag_ebfmi_binary")] = NA
-results_table_cleaned[which(results_table_cleaned$name=="h"),c("mean_true_score_cor2")] = NA
-results_table_cleaned$name[results_table_cleaned$name=="rmp"] = "rmu"
+results_table_cleaned[which(results_table_cleaned$name!="rmp"),c("perc_diag_divergences_binary","perc_diag_ebfmi_binary")] = NA
+results_table_cleaned[which(results_table_cleaned$name!="rmp"),c("mean_true_score_cor2")] = NA
+results_table_cleaned$name[results_table_cleaned$name=="rmp"] = "RMU"
+results_table_cleaned$name[results_table_cleaned$name=="h"] = "H"
+results_table_cleaned$name[results_table_cleaned$name=="a"] = "Alpha"
 
 results_table_cleaned %>%
   select(-coverage_se, -loading_set, - pop_rel_sd, 
@@ -174,7 +214,7 @@ results_table_cleaned %>%
   tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
   tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
   tab_spanner(label = "Simulation Parameters", columns = c(pop_rel, mean_true_score_cor2, loadings_list_pretty,sample_sizes, n)) %>%
-  tab_spanner(label = "Estimator Performance", columns = c( bias, bias_lb, bias_ub, MSE)) %>%
+  tab_spanner(label = "Estimator Performance", columns = c( bias, bias_lb, bias_ub, MSE, MSE_se, EmpSE, EmpSE_se)) %>%
   tab_spanner(label = "Confidence/Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   tab_footnote(
     footnote = md(" n<sub>sim</sub> = number of simulations completed for this set of simulation parameters. 
@@ -189,25 +229,20 @@ results_table_cleaned %>%
     locations = cells_body(
       columns = everything(),
       rows = which((sample_sizes ==200 & name == "h"))
-      # rows = which(name == "rmp")
     )
   ) %>%
   tab_options(
     table.width = pct(49)
-
-    # table.width = pct(38)
-    
   ) %>%
-  gt::cols_hide(c(`Mean True Score Coverage` )) %>%
-  # gt::cols_hide(c(name,`Mean True Score Coverage` )) %>%
+  gt::cols_hide(c(`Mean True Score Coverage`, EmpSE_lb, EmpSE_ub, MSE_lb, MSE_ub)) %>%
   cols_width(
-    c(loadings_list_pretty) ~ pct(10),  # Set width of 'Name' column to 100 pixels
+    c(loadings_list_pretty) ~ pct(10),         # Set width of 'Name' column to 100 pixels
     c(perc_diag_divergences_binary) ~ pct(8),  # Set width of 'Name' column to 100 pixels
-    c(perc_diag_ebfmi_binary) ~ pct(8),  # Set width of 'Occupation' column to 150 pixels
+    c(perc_diag_ebfmi_binary) ~ pct(8),        # Set width of 'Occupation' column to 150 pixels
     everything() ~ px(.4)
   ) %>%
-  opt_horizontal_padding(scale = 0) %>%
-  # gtsave(filename = file.path("results","4_table_withcoefficient_h.docx"))
+  opt_horizontal_padding(scale = 0)
+
   gtsave(filename = file.path("results","4_table_A.html"))
 
 
@@ -215,104 +250,82 @@ gtsave(filename = file.path("results","4_table_A.html"))
 gtsave(filename = file.path("results","4_table_withcoefficient_h.docx"))
 
 
-### Smaller table with fewer comparisons ---------------------------------------
-# 
-# results_table_long %>%
-#   group_by( sample_sizes, n_items, name) %>%
-#   mutate(
-#     difference = est - pop_rel,
-#     ci_correct = (lb < pop_rel & ub > pop_rel),
-#     ci_length  = ub - lb
-#   ) %>%
-#   summarise(
-#     n = n(),
-#     mean     = mean(est),
-#     bias       = mean(difference),
-#     mad      = mean(abs(difference)),
-#     coverage = length(which(ci_correct))/length(ci_correct),
-#     coverage_se = sqrt((coverage*(1-coverage))/n),
-#     coverage_lb = coverage - qnorm(0.975)*coverage_se,
-#     coverage_ub = coverage + qnorm(0.975)*coverage_se,
-#     mean_ci_length = mean(ci_length),
-#     `Mean True Score Coverage` = mean(true_score_coverage)
-#   ) %>%
-#   ungroup() %>%
-#   # arrange(desc(coverage)) %>%
-#   filter(name !="h") %>%
-#   select(-coverage_se, -name) %>%
-#   gt() %>%
-#   # gt::cols_move_to_start(name) %>%
-#   fmt(
-#     columns = where(is.numeric),
-#     fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
-#   ) %>%
-#   fmt_number(
-#     columns = starts_with("n"),
-#     decimals = 0
-#   ) %>%
-#   fmt_percent(
-#     columns = starts_with("coverage"),
-#     decimals = 1
-#   ) %>%
-#   cols_label(
-#     sample_sizes ~ "Sample Size",
-#     # constained_loadings ~ "Loadings Constrained",
-#     # pop_rel_mean ~ "{{R_pop}}",
-#     # sens_sigma   ~ "{{:sigma:_sens}}",
-#     # n_items      ~ "# Items",
-#     bias           ~ "bias",
-#     mean_ci_length ~ "Mean Length"
-#     
-#   )  %>%
-#   tab_spanner(label = "Simulation Parameters", columns = c(sample_sizes, n)) %>%
-#   tab_spanner(label = "Estimator Performance", columns = c(mean, mad, bias)) %>%
-#   tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
-#   tab_footnote(
-#     "{{R_pop}} = Simulated Population Reliability. mae = Mean Absolute Error. n = number of simulations. These results are averaged over the different sample sizes"
-#   ) %>%
-#   tab_style(
-#     style = cell_fill(color = "lightgray"),
-#     locations = cells_body(
-#       columns = everything(),
-#       rows = which((n_items ==10 | n_items == 40))
-#     )
-#   ) 
 
 ## Plots -----------------------------------------------------------------------
 
-### Coverage -------------------------------------------------------------------
+##### Overall Performance ------------------------------------------------------
 
-results_table_cleaned %>%
-  mutate(loadings_list_pretty2 = factor(loadings_list_pretty2)) %>%
-  ggplot(aes(y = coverage, 
-             ymin = coverage_lb, 
-             ymax = coverage_ub, 
-             x = sample_sizes, 
-             col = name)) +
-  geom_errorbar(size = 2) +  
-  geom_hline(yintercept = 0.95) +
-  jtools::theme_apa() +
-  scale_color_manual(values=c("#E69F00", "#56B4E9")) +
-  labs(x = "Number of Items Per Simulation", 
-       y = "Credible Interval Coverage") +
-  coord_cartesian(ylim = c(0,1)) +
-  facet_wrap(~ loadings_list_pretty2) 
+write.csv(results_table_cleaned, "99_claude_data.csv")
+
+data_plot = results_table_cleaned %>% 
+  rename(
+    Estimator = name,
+    Coverage  = coverage
+         ) %>%
+  pivot_longer(cols = c("bias","EmpSE","MSE", "Coverage"), values_to = "Est") %>%
+  mutate(
+    name = factor(name, levels = c("bias", "EmpSE", "MSE", "Coverage")),
+    Estimator = factor(Estimator, levels = c("RMU", "Alpha", "H"))
+  )
+
+format_decimals <- function(x, decimals = 2) {
+  format_number <- function(num) {
+    if (abs(num - 1) < 1e-10) {  # Check if the number is very close to 1
+      return("1")
+    } else if (abs(num) < 1) {
+      return(sub("^-?0.", ".", sprintf(paste0("%.", decimals, "f"), num)))
+    } else {
+      return(sprintf(paste0("%.", decimals, "f"), num))
+    }
+  }
+  sapply(x, format_number)
+}
+
+data_plot %>%
+  filter(loading_set!=7) %>%
+  ggplot(aes(y = Est,  group = Estimator, x = sample_sizes, fill = Estimator)) + 
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = .9) +
+  facet_grid(
+    rows   = vars(name), 
+    cols   = vars(loading_set),
+    scales = "free_y", 
+    switch = "y"
+    ) + 
+  labs(
+    y = NULL, 
+    x = expression(paste("Sample Size of Simulated Dataset (n", scriptstyle(obs), ")"))
+  ) +
+  theme_bw(
+    base_size = 20
+  ) +
+  theme(
+    axis.text.x        = element_text(angle = 45, hjust = 1),
+    axis.text.y        = element_text(hjust = 1),
+    strip.placement    = "outside",
+    panel.grid.major.y = element_line(color = "gray90"),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_blank(),
+    legend.position    = "bottom",
+    ) +
+  ggh4x::facetted_pos_scales(
+    y = list(
+      name == "bias"     ~ scale_y_continuous(labels = format_decimals),
+      name == "EmpSE"    ~ scale_y_continuous(labels = format_decimals),
+      name == "MSE"      ~ scale_y_continuous(limits = c(NA, 0.03), labels = format_decimals),
+      name == "Coverage" ~ scale_y_continuous(limits = c(.9, 1), labels = function(x) format_decimals(x,decimals = 3) )
+    ))
 
 
-### Distribution of effect sizes -----------------------------------------------
 
-##### Using just summary data --------------------------------------------------
 
-results_table_cleaned %>%
-  ggplot(aes(y = mean, ymin = mean_lb, ymax = mean_ub, x = sample_sizes, col = name)) +
-  geom_point() +
-  geom_errorbar(size = 2) +  
-  geom_hline(aes(yintercept = pop_rel)) +
-  jtools::theme_apa() +
-  scale_color_manual(values=c("#E69F00", "#56B4E9")) +
-  labs(x = "Number of Items Per Simulation", y = "Credible Interval Coverage") +
-  coord_cartesian(ylim = c(0,1)) +
-  facet_wrap(~ loadings_list_pretty2) 
+
+
+
+
+
+
+
+
 
 ##### Using raw data ----------------------------------------------------------
 
@@ -333,11 +346,40 @@ results_table_long  %>%
     legend.justification = c("right", "bottom"),
     # legend.box.just = "right",
     # legend.margin = margin(6, 6, 6, 6)
-  )
+  ) 
 
 ggsave(file.path("plots","4_rawdata_plot.png"), width = 8, height = 7.5)
 
 colnames(results_table_long)
+
+##### Using raw data (density plot) -----------------------------------------------------------
+
+results_table_long  %>%
+  ggplot(aes(y = est, x = sample_sizes, col = name, fill = name)) +
+  geom_violin(width = 1.4) + 
+  geom_hline(aes(yintercept = pop_rel)) +
+  stat_summary(fun.data = ggplot2::mean_cl_normal,
+               geom = "errorbar",
+               width = .3
+  ) +
+  facet_wrap(~ loading_list_pretty2) + 
+  labs(y = "Sample reliability estimate", x = "Sample Size") +
+  guides(col=guide_legend(title="Estimator")) +
+  ggplot2::theme_bw() +
+  theme(
+    legend.position = c(.95, .05),
+    legend.justification = c("right", "bottom"),
+    # legend.box.just = "right",
+    # legend.margin = margin(6, 6, 6, 6)
+  ) 
+
+
+
+
+# OLD ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
 ## Do models without model fit issues fit better ?? ----------------------------
 
 # Does population coefficient H describe how well the observed factor scores and true scores correlate? -------------------
