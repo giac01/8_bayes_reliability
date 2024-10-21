@@ -31,7 +31,7 @@ mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 
 # Example of creating a list of all combinations
 params_list <- expand.grid(
-  n_pps               = c(50),
+  n_pps               = c(100),
   n_trials            = c(60,120,200), 
   # n_trials          = c(200),
   learning_rate_mean  = 0.5,

@@ -101,7 +101,8 @@ run_ri_sim = function(
     parallel_chains = 1,
     refresh = 500, 
     iter_warmup = 1000,
-    iter_sampling = 1000
+    iter_sampling = 1000,
+    adapt_delta = .99
   )
    
   model_exists = (length(internal_results$output_files())!=0)
