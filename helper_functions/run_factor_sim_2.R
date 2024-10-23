@@ -89,7 +89,7 @@ run_factor_sim_2 = function(
     parallel_chains = 1,
     refresh = 500, # print update every 500 iters
     iter_warmup = 1000,
-    iter_sampling = 1500,
+    iter_sampling = 1000,
     adapt_delta = .97
   )
   

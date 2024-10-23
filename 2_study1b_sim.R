@@ -18,7 +18,7 @@ list.files(file.path("helper_functions"), pattern = "\\.R$", full.names = TRUE) 
 
 # Compile stan model -----------------------------------------------------------
 
-mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v7.stan"))
+mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v10.stan"))
 
 # Create Parameter Table ---------------------------------------------------
 
@@ -55,13 +55,11 @@ params_list <- expand.grid(
 
 # 100 reps completed in 3 hours and 25 minutes 
 
-saveRDS(params_list, file = file.path("results","4_params_list_aa.rds"))
-
 # Run code in parallel using future --------------------------------------------
 print(availableCores())
 
-# future::plan(future::multisession(workers = availableCores()))
-future::plan(future::multisession(workers = 8))
+future::plan(future::multisession(workers = availableCores()))
+# future::plan(future::multisession(workers = 8))
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = FALSE, 1:nrow(params_list), function(i) {
