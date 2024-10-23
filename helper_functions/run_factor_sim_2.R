@@ -65,7 +65,8 @@ run_factor_sim_2 = function(
     item_n = length(unique(dat_long$name)),
     item   = match(dat_long$name, unique(dat_long$name)),
     pps    = dat_long$pps,
-    y      = dat_long$value
+    y      = dat_long$value,
+    prior_PPC = 0
   )
   
   if (use_init){                                                                # Initialization has a HUGE impact on small sample performance! 
