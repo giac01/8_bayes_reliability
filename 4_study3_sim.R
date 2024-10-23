@@ -29,18 +29,20 @@ mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 
 # Create Parameter Table ---------------------------------------------------
 
+g_normaluniform(100000, .2, .4) %>% hist()
+
+
 # Example of creating a list of all combinations
 params_list <- expand.grid(
-  n_pps               = c(100),
-  n_trials            = c(60,120,200), 
+  n_pps               = c(70,140),
+  n_trials            = c(100,200,400), 
   # n_trials          = c(200),
-  learning_rate_mean  = 0.5,
-  learning_rate_sd    = c(0, .3, 1),
+  learning_rate_mean  = 0.2,
+  learning_rate_sd    = c(0, .20, .4),
   decision_noise_mean = .75,
   decision_noise_sd   = .25,
   prob_real           = .75,    # probability of outcome 2 
   run_rep = 1:run_rep_env  
-                   
 ) 
 
 # Note that above aren't the learning rate sd, to work it out use:
@@ -54,7 +56,7 @@ print(seed_env)
 print(availableCores())
 
  future::plan(future::multisession(workers = availableCores()))
-#future::plan(future::multisession(workers =  8))
+# future::plan(future::multisession(workers =  8))
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = seed_env, 1:nrow(params_list), function(i) {

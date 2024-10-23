@@ -45,7 +45,7 @@ run_ri_sim = function(
   results[["settings"]][["prob_real"]]           = prob_real
   results[["settings"]][["save_results"]]        = save_results 
   results[["diagnostics"]]                       = list()
-
+  
   dat = sim_ri(
     n_pps              = n_pps,
     n_trials           = n_trials,
@@ -92,6 +92,8 @@ run_ri_sim = function(
     }
   }
   
+  time_a = Sys.time()
+  
   internal_results = mod$sample(    
     data = stan_data, 
     init = init_values_muphi,
@@ -102,8 +104,13 @@ run_ri_sim = function(
     refresh = 500, 
     iter_warmup = 1000,
     iter_sampling = 1000,
-    adapt_delta = .99
+    adapt_delta = ifelse(n_pps<=100,.98, .95)
   )
+  
+  time_b = Sys.time()
+  
+  results[["diagnostics"]][["fit_time"]] = as.numeric(difftime(time_b, time_a, units = "mins"))
+  
    
   model_exists = (length(internal_results$output_files())!=0)
   # additional tests use up a lot of memory so need to be disabled for population calculations with large N_sim
