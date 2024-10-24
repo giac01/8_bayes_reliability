@@ -12,6 +12,9 @@ print(seed_env)
 
 cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
 
+#reliability() function:
+source("https://raw.githubusercontent.com/giac01/gbtoolbox/cc3b88b03494425207224f1182dc01f5dcee0d26/R/reliability.R")
+
 library(brms)
 library(tidyverse)
 library(future)
@@ -29,7 +32,7 @@ mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 
 # Create Parameter Table ---------------------------------------------------
 
-g_normaluniform(100000, .2, .4) %>% hist()
+# g_normaluniform(100000, .2, .4) %>% hist()
 
 
 # Example of creating a list of all combinations
