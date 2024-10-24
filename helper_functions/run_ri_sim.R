@@ -9,7 +9,6 @@ run_ri_sim = function(
     decision_noise_sd,
     prob_real,
     reward_outcome,
-    n_draws = 2000,
     save_results = FALSE,
     additional_tests = TRUE,
     init_stan = "normal"
@@ -46,7 +45,7 @@ run_ri_sim = function(
   results[["settings"]][["save_results"]]        = save_results 
   results[["diagnostics"]]                       = list()
   
-  dat = sim_ri(
+  dat = sim_ri( # remove warning from here!
     n_pps              = n_pps,
     n_trials           = n_trials,
     init_beliefs       = init_beliefs,
@@ -151,7 +150,9 @@ run_ri_sim = function(
   
     results[["avg_true_score_coverage"]] = length(which( learning_rate_estimates$ci_contain_true_score==1))/length(which( learning_rate_estimates$ci_contain_true_score<2))
     
-    rmp_calc = calc_r_ri(internal_results)
+    rmp_calc =  internal_results$draws(variables = "A", format = "matrix") %>%
+                t() %>%
+                reliability()
     
     results[["rmp"]] = rmp_calc$hdci
     results[["rmp_pd"]] = rmp_calc$pd
