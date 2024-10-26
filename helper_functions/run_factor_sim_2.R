@@ -59,7 +59,8 @@ run_factor_sim_2 = function(
   # Fit Model 
   
   dat_stan = list(
-    lambda_sd_prior_sd = .20,
+    lambda_sd_prior_sd = .05,
+    lambda_mean_prior_sd = 0.90,
     n      = nrow(dat_long),
     pps_n  = length(unique(dat_long$pps)),
     item_n = length(unique(dat_long$name)),
@@ -73,12 +74,12 @@ run_factor_sim_2 = function(
     init_fun <- function() list(
       theta = rnorm(nrow(dat), 0, 0.1),
       # lambda = rnorm(length(l),.5,0),
-      # lambda_raw = rnorm(length(l), .1, 0),
+      lambda_raw = rnorm(length(loadings), .1, 0),
       sigma_add = rnorm(length(loadings), .01, 0),
       lambda_sd = rnorm(1, .1, 0),
-      lambda_mean = rnorm(1, 1, 0),
-      lambda_raw_1 = rnorm(1, .1, 0),
-      lambda_raw_rest = rnorm(length(loadings)-1,0,0)
+      lambda_mean = rnorm(1, 0, 0)
+      # lambda_raw_1 = rnorm(1, .1, 0),
+      # lambda_raw_rest = rnorm(length(loadings)-1,0,0)
     )
   }
   
@@ -91,7 +92,7 @@ run_factor_sim_2 = function(
     refresh = 500, # print update every 500 iters
     iter_warmup = 1000,
     iter_sampling = 1000,
-    adapt_delta = .97
+    adapt_delta = .98
   )
   
   # Calculate coefficient H using posterior draws of mcmc model 
@@ -100,7 +101,9 @@ run_factor_sim_2 = function(
   
   l = out[["mcmc_loadings"]] = loadings_df$mean
   
-  out[["mcmc_coefh"]] = (1+(sum(l^2/(1-l^2))^-1))^-1
+  out[["mcmc_coefh_old"]] = (1+(sum(l^2/(1-l^2))^-1))^-1
+  
+  out[["mcmc_coefh"]] = internal_results$draws(variables = "mcmc_coef_h", format = "data.frame") %>% ggdist::mean_hdci()
   
   # Diagnostics using cmdstanr
   diagnostics = internal_results$diagnostic_summary()
