@@ -101,7 +101,7 @@ run_ri_sim_variational = function(
     # tol_rel_obj = .0001,
     # iter = 40000,
     
-    tol_rel_obj = .001, # increased by 1/10 (again)
+    tol_rel_obj = .0001, # increased by 1/10 (again)
     iter = 40000,
     algorithm = "meanfield",
     save_latent_dynamics = TRUE
