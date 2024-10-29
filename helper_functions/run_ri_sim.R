@@ -11,7 +11,8 @@ run_ri_sim = function(
     reward_outcome,
     save_results = FALSE,
     additional_tests = TRUE,
-    init_stan = "normal"
+    init_stan = "normal",
+    temp_save_file_name = NULL
 ){
   
   if (is.null(i)) stop("i is null")
@@ -211,6 +212,11 @@ run_ri_sim = function(
 
   if ((i %% 5)==0){
     write.csv(data.frame(y=""), file.path("progress_ri",paste0(i,".ignore")))
+  }
+  
+  if (!is.null(temp_save_file_name)){
+    filename = paste0(temp_save_file_name,i,".rds")
+    saveRDS(results, file = file.path("results","study3results",filename))
   }
 
   return(results)
