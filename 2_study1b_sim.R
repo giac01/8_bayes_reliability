@@ -17,6 +17,7 @@ list.files(file.path("helper_functions"), pattern = "\\.R$", full.names = TRUE) 
   lapply(., function(x) {source(x)})
 
 # Compile stan model -----------------------------------------------------------
+cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
 
 mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v14.stan"))
 
@@ -62,7 +63,8 @@ future::plan(future::multisession(workers = availableCores()))
 # future::plan(future::multisession(workers = 8))
 
 time_a = Sys.time()
-results <- future.apply::future_lapply(future.seed = FALSE, 1:nrow(params_list), function(i) {
+
+results <- future.apply::future_lapply(future.seed = seed_env, 1:nrow(params_list), function(i) {
   run_factor_sim_2(
     i = i,
     n = params_list$sample_sizes[i], 
@@ -72,11 +74,11 @@ results <- future.apply::future_lapply(future.seed = FALSE, 1:nrow(params_list),
   )
 }
 )
+
 time_b = Sys.time()
 time_b - time_a
 
 future::plan(future::sequential())
-
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
 filename <- paste0("2_study1b_seed", seed_env ,"_",timestamp,".rds")
