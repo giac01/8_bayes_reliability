@@ -58,7 +58,7 @@ print(seed_env)
 # Run code in parallel using future --------------------------------------------
 print(availableCores())
 
- future::plan(future::multisession(workers = availableCores()))
+future::plan(future::multisession(workers = availableCores()))
 # future::plan(future::multisession(workers =  8))
 
 time_a = Sys.time()
@@ -88,4 +88,4 @@ future::plan(future::sequential())
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
 filename <- paste0("study3b_results_seed_", seed_env ,"_",timestamp,".rds")
 print(filename)
-saveRDS(results, file = file.path("results",filename))
+saveRDS(results, file = file.path("results","s3res_large",filename))
