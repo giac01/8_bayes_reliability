@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J 6_sim_sdt_himem_1000rep
+#SBATCH -J 2_study1b_1000rep_seed2
 #! Which project should be charged:
 #SBATCH -A BLAKEMORE-SL3-CPU
 #SBATCH -p icelake-himem
@@ -58,11 +58,11 @@ module load rhel8/default-icl              # REQUIRED - loads the basic environm
 #! Insert additional module load commands after this line if needed:
 module load singularity/current
 
-export RUN_REP="1050"
-export SEED_ENV="44"
+export RUN_REP="1000"
+export SEED_ENV="3"
 
 #! Full path to application executable: 
-application="singularity exec 6_ptsd_v4.sif Rscript 3_study2_sim.R"
+application="singularity exec 6_ptsd_v4.sif Rscript 2_study1b_sim.R"
 
 #! Run options for the application:
 options=""

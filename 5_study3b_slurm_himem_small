@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J 6_sim_sdt_himem_1000rep
+#SBATCH -J study3b_icelake_himem_rep100_seed2004
 #! Which project should be charged:
 #SBATCH -A BLAKEMORE-SL3-CPU
 #SBATCH -p icelake-himem
@@ -19,7 +19,7 @@
 #! How many (MPI) tasks will there be in total? (<= nodes*76)
 #! The Ice Lake (icelake) nodes have 76 CPUs (cores) each and
 #! 3380 MiB of memory per CPU.
-#SBATCH --ntasks=76
+#SBATCH --ntasks=20
 #! How much wallclock time will be required?
 #SBATCH --time=12:00:00
 #! What types of email messages do you wish to receive?
@@ -58,18 +58,18 @@ module load rhel8/default-icl              # REQUIRED - loads the basic environm
 #! Insert additional module load commands after this line if needed:
 module load singularity/current
 
-export RUN_REP="1050"
-export SEED_ENV="44"
+export RUN_REP="100"
+export SEED_ENV="2004"
 
 #! Full path to application executable: 
-application="singularity exec 6_ptsd_v4.sif Rscript 3_study2_sim.R"
+application="singularity exec 6_ptsd_v4.sif Rscript 5_study3b_sim.R"
 
 #! Run options for the application:
 options=""
 
 #! Work directory (i.e. where the job will run):
 workdir="$SLURM_SUBMIT_DIR"  # The value of SLURM_SUBMIT_DIR sets workdir to the directory
-                             # in which sbatch is run.
+# in which sbatch is run.
 
 #! Are you using OpenMP (NB this is unrelated to OpenMPI)? If so increase this
 #! safe value to no more than 76:
@@ -117,11 +117,11 @@ echo "Running on master node: `hostname`"
 echo "Current directory: `pwd`"
 
 if [ "$SLURM_JOB_NODELIST" ]; then
-        #! Create a machine file:
-        export NODEFILE=`generate_pbs_nodefile`
-        cat $NODEFILE | uniq > machine.file.$JOBID
-        echo -e "\nNodes allocated:\n================"
-        echo `cat machine.file.$JOBID | sed -e 's/\..*$//g'`
+#! Create a machine file:
+export NODEFILE=`generate_pbs_nodefile`
+cat $NODEFILE | uniq > machine.file.$JOBID
+echo -e "\nNodes allocated:\n================"
+echo `cat machine.file.$JOBID | sed -e 's/\..*$//g'`
 fi
 
 echo -e "\nnumtasks=$numtasks, numnodes=$numnodes, mpi_tasks_per_node=$mpi_tasks_per_node (OMP_NUM_THREADS=$OMP_NUM_THREADS)"

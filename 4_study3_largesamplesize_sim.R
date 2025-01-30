@@ -50,6 +50,16 @@ params_list <- expand.grid(
   run_rep = 1:run_rep_env  
 ) 
 
+# Select a specific learing_rate_sd to run (as otherwise this takes too long!)
+
+select_condition = seed_env %% 3 + 1
+select_condition = c(0, .20, .4)[select_condition]
+
+params_list = params_list %>%
+  filter(
+    learning_rate_sd %in% select_condition
+  )
+  
 # Note that above aren't the learning rate sd, to work it out use:
 # sd(g_normaluniform(400000000, .5, learning_rate_sd)
 
@@ -61,7 +71,7 @@ print(seed_env)
 # Run code in parallel using future --------------------------------------------
 print(availableCores())
 
- future::plan(future::multisession(workers = availableCores()))
+future::plan(future::multisession(workers = availableCores()))
 # future::plan(future::multisession(workers =  8))
 
 time_a = Sys.time()
@@ -99,4 +109,4 @@ timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp
 filename <- paste0("study3_results_seed_", seed_env ,"_",timestamp,".rds")
 print("Here11212322")
 print(filename)
-saveRDS(results, file = file.path("results",filename))
+saveRDS(results, file = file.path("results","s3res_large",filename))
