@@ -251,7 +251,7 @@ x + rp/100*x
       TRUE ~ NA_character_  # Catches any other values
     )) %>%
     select(-pop_rel_sd, -coverage_se) %>%
-    select(pop_rel, population_reliability_ls, everything()) %>%
+    select(name, pop_rel, population_reliability_ls, everything()) %>%
     arrange(sens_sigma, n_items, k_sigma, sample_sizes, name) %>%
     gt() %>%
     fmt(
@@ -270,7 +270,7 @@ x + rp/100*x
       sample_sizes ~ "{{n_obs}}",
       n            ~ "{{n_sim}}",      # avg_cor2     ~ "{{:rho:_:theta:,x^2}}",
       # pop_rel      ~ "{{mean[:rho:_:theta:,x^2 ]}}",
-      pop_rel ~ "{{R_pop}}",
+      pop_rel ~ "estimand",
       # sens_mean    ~ "{{:mu:_d'}}",
       sens_sigma   ~ "{{:sigma:_d'}}",
       k_sigma      ~ "{{:sigma:_:kappa:}}",
@@ -289,8 +289,8 @@ x + rp/100*x
       coverage_lb  ~ "LB",
       coverage_ub  ~ "UB",
       mean_ci_length ~  md("Mean<br>Length"),
-      name         ~ "Estimator",
-      perc_diag_divergences_binary ~ md("% Divergent<br>Transitions"),
+      name         ~ "Est",
+      perc_diag_divergences_binary ~ md("% DT"),
       sum_diag_divergences_binary ~ md("N Divergent<br>Transitions"),
       sum_diag_ebfmi_binary ~   md("% Low<br>E-BFMI"),
       # .fn = md
@@ -300,19 +300,22 @@ x + rp/100*x
     tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
     tab_spanner(label = "RMSE 95% CI", columns = c(RMSE, RMSE_lb, RMSE_ub)) %>%
     tab_spanner(label = "EmpSE 95% CI", columns = c(EmpSE, EmpSE_lb, EmpSE_ub)) %>%
-    tab_spanner(label = "Simulation Parameters", columns = c(pop_rel,population_reliability_ls, sens_sigma, n_items, k_sigma, n, sample_sizes,name)) %>%
-    tab_spanner(label = "Estimator Performance", columns = c(contains("RMSE"),contains("EmpSE"), contains("bias"))) %>%
+    tab_spanner(label = "Simulation Parameters", 
+                columns = c(name,pop_rel,population_reliability_ls, sens_sigma, n_items, k_sigma, sample_sizes, n)) %>%
+    tab_spanner(label = "Estimator Performance",
+                columns = c(contains("RMSE"),contains("EmpSE"), contains("bias"))) %>%
     tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
     tab_footnote(
-      footnote = md("R<sub>pop</sub> = Simulated Population Reliability. 
-                    σ<sub>d'</sub> = standard deviation of true sensitivity values across subjects.
-                    n<sub>trials</sub> = number of trials completed per participant.
-                    n<sub>sim</sub> = number of simulations completed for this set of simulation parameters. 
-                    n<sub>obs</sub> = number of subjects per simulation.
-                    MSE = Mean Squared Error.
-                    R<sub>pop</sub> is average squared correlation between the posterior mean estimates and the true score estimates across the simulations.
-                    Coverage is the proportion of times the 95% credible intervals include the population reliability, which shoud be around 95%.
-                    "
+      footnote = html("<b>n<sub>sim</sub></b> = number of simulations completed for this set of simulation parameters.
+                <b>n<sub>obs</sub></b> = number of subjects per simulation.
+                <b>RMSE</b> = Root Mean Squared Error.
+                <b>Coverage</b> = proportion of times the 95% credible intervals include the population reliability, which should be around 95%.
+                <b>estimand</b> = ASCOTS (Average Squared Correlation between Observed and True Scores).
+                <b>Mean Length</b> = Mean length of credible or confidence interval.
+                <b>σ<sub>d'</sub></b> = standard deviation of population true sensitivity values across subjects.
+                <b>n<sub>trials</sub></b> = number of trials completed per participant.
+                <b>% DT</b> = Percent of simulations with divergent transitions (applies to Bayesian measurement models only).     
+                      "
       )
     ) %>%
     tab_style(
@@ -327,11 +330,10 @@ x + rp/100*x
     ) %>%
   gt::cols_hide(
     c(mae,bias_se, k_sigma, mean, ends_with("_se"),mean_testretest_cor, starts_with("MSE"), contains("ebfmi"),sum_diag_divergences_binary,population_reliability_ls)
-    ) 
+    ) %>%
 
-  # gtsave(filename = file.path("results","6_results_table_1.html"))
-
-
+  gtsave(filename = file.path("results_tables","3_study2_performance_comparison.html"))
+  
 
 # Comparison of split half and RMP ---------------------------------------------
   
@@ -673,90 +675,3 @@ ggsave(file.path("plots","3_study2_violinplot_comparison.pdf"), width = 6.2, hei
 
 # DEPRECIATED ------------------------------------------------------------------
 
-
-## Plots of summary statistics -------------------------------------------------
-results_table_cleaned %>%
-  ggplot(aes( y = bias, ymin = bias_lb, bias = bias_ub)) + 
-  geom_errorbar()
-
-
-## Plots of each sample statistic ----------------------------------------------
-
-results_table_long %>%
-  arrange(est) %>%
-  filter(name == "rmp") %>%
-  filter(k_sigma ==0.2) %>%
-  mutate(n_items = factor(n_items)) %>%
-  group_by(n_items, sens_sigma, k_sigma, sample_sizes) %>%       # aggregating over sample-sizes & sens_mean
-  mutate(i = 1:n()) %>%
-  ggplot(aes( x = i, y = est, shape = sample_sizes, col = n_items)) + 
-  geom_hline(yintercept = 0) +
-  geom_point() + 
-  geom_errorbar(aes(ymin = lb, ymax = ub), alpha = .1) +
-  geom_hline(aes(yintercept =pop_rel, col = n_items), size = 1.2) +
-  coord_cartesian(ylim =c(-.7,1)) +
-  theme_bw() +
-  facet_grid(~ sample_sizes + sens_sigma)
-
-
-
-  results_table_long %>%
-    filter(name == "rmp") %>%
-    ggplot(aes(x = pop_rel, y = est)) +
-    geom_point() +
-    geom_abline(slope = 1, intercept = 0) +
-    facet_wrap(~sample_sizes + n_items)
-
-  results_table_long %>%
-    filter(name == "rmp") %>%
-    ggplot(aes(x = pop_rel, y = est)) +
-    geom_point() +
-    geom_abline(slope = 1, intercept = 0) +
-    geom_errorbar(aes(ymin = lb, ymax = ub)) +
-    facet_wrap(~sample_sizes + n_items)
-  
-  results_table_long %>%
-    filter(name == "rmp") %>%
-    ggplot(aes(x = pop_rel, y = est)) +
-    geom_point() +
-    geom_abline(slope = 1, intercept = 0) +
-    geom_errorbar(aes(ymin = lb, ymax = ub)) +
-    facet_wrap(~sample_sizes + k_sigma)
-  
-  
-  
-  
-  
-
-  table(results_table_long$settings_used)
-  
-  results_table_long %>% 
-    filter(name == "rmp") %>%
-    mutate(
-      settings_used_pretty = paste0(
-        "mu[beta]^2 == ", round(sens_mean, digits = 2),
-        "*','~sigma[theta]^2 == ", round(sens_sigma, digits = 2),
-        "*','~mu[kappa]^2 == ", round(k_mean, digits = 2),
-        "*','~sigma[kappa]^2 == ", round(k_sigma, digits = 2),
-        "*','~N[items] == ", round(n_items, digits = 0)
-     )
-    ) %>%
-    ggplot(aes(x = sample_sizes, y = est)) + 
-    geom_point() + 
-    geom_errorbar(aes(ymin = lb, ymax = ub)) +
-    geom_hline(aes(yintercept = pop_rel), col = "red") +
-    facet_wrap(~settings_used_pretty, labeller = label_parsed)
-  
-  
-  
-  # results_table$settings_used = paste(results_table$sens_mean, 
-  #                                     results_table$sens_sigma, 
-  #                                     results_table$k_mean, 
-  #                                     results_table$k_sigma, 
-  #                                     results_table$n_items, 
-  #                                     sep = "_")
-  # 
-  
-
-
-  
