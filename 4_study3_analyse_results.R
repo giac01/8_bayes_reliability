@@ -342,7 +342,7 @@ results_table_cleaned %>%
     sample_sizes ~ "{{n_obs}}",
     n            ~ "{{n_sim}}",      # avg_cor2     ~ "{{:rho:_:theta:,x^2}}",
     # avg_cor2      ~ "{{mean[:rho:_:theta:,x^2 ]}}",
-    pop_rel ~ "{{R_pop}}",
+    pop_rel ~ "estimand",
     n_trials      ~ "{{n_trials}}",
     bias           ~ "bias",
     EmpSE    ~ "",
@@ -368,7 +368,7 @@ results_table_cleaned %>%
   tab_spanner(label = "RMSE 95% CI", columns = c(RMSE, RMSE_lb, RMSE_ub)) %>%
   tab_spanner(label = "EmpSE 95% CI", columns = c(EmpSE, EmpSE_lb, EmpSE_ub)) %>%
   tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
-  tab_spanner(label = "Simulation Parameters", columns = c(pop_rel,sample_sizes,learning_rate_sd,n_trials,n)) %>%
+  tab_spanner(label = "Simulation Parameters", columns = c(pop_rel,learning_rate_sd,n_trials,sample_sizes,n)) %>%
   tab_spanner(label = "Estimator Performance", columns = c(RMSE, RMSE_lb, RMSE_ub, bias, bias_lb, bias_ub,EmpSE, EmpSE_lb, EmpSE_ub)) %>%
   tab_spanner(label = "Credible Interval Performance", columns = c(coverage, coverage_lb, coverage_ub,mean_ci_length,coverage_be  )) %>%
   cols_move(
@@ -376,18 +376,17 @@ results_table_cleaned %>%
     after = mean_ci_length
   ) %>%
   tab_footnote(
-    footnote = md("R<sub>pop</sub> = Reliability estimand, average squared correlation between observed and . 
-                    n<sub>obs</sub> = number of subjects per simulation.
-                    σ<sub>learnrate</sub> = standard deviation of true learning rates across subjects.
-                    n<sub>trials</sub> = number of trials completed per participant.
-                    n<sub>sim</sub> = number of simulations completed for this set of simulation parameters. 
-                    EmpSE = Empirical Standard Error (sd of RMU estimates).
-                    RMSE = Root Mean Squared Error.
-                    R<sub>pop</sub> is average squared correlation between the posterior mean estimates and the true score estimates across the simulations.
-                    Coverage is the proportion of times the 95% credible intervals include the population reliability, which shoud be around 95%.
-                    Bias-eliminated coverage is the percentage of simulations where the 95% credible intervals contain the mean RMU estimate on a given condition. 
-                    True score coverate is the poportion of times the 95% credible interval for each subject's learning rate contains the true learning rate for that subject.
-                  "
+    footnote = html("<b>n<sub>sim</sub></b> = number of simulations completed for this set of simulation parameters.
+                <b>n<sub>obs</sub></b> = number of subjects per simulation.
+                <b>RMSE</b> = Root Mean Squared Error.
+                <b>Coverage</b> = proportion of times the 95% credible intervals include the population reliability, which should be around 95%.
+                <b>estimand</b> = ASCOTS (Average Squared Correlation between Observed and True Scores).
+                <b>Mean Length</b> = Mean length of credible or confidence interval.
+                <b>σ<sub>learnrate</sub></b> = standard deviation of population true learning rates across subjects.
+                <b>n<sub>trials</sub></b> = number of trials completed per participant.
+                <b>EmpSE</b> = Empirical Standard Error (sd of RMU estimates).
+                <b>Bias-eliminated coverage</b> = percentage of simulations where the 95% credible intervals contain the mean RMU estimate on a given condition.
+                <b>True score coverage</b> = proportion of times the 95% credible interval for each subject's learning rate contains the true learning rate for that subject."
     )
   ) %>%
   tab_style(
@@ -632,6 +631,14 @@ ggplot(data.frame(d1 = d1), aes(x = d1)) +
 
 ggsave(file.path("plots","4_learningrate_density_3.png"),width = 4, height = 3)
 
+
+
+
+
+
+
+
+
 # Modelling ------------------------------------------------------
 
 
@@ -756,7 +763,7 @@ table(duplicated(results_table$rmp_est))
 
 table(duplicated(results_table$rmp_ub))
 
-table(duplicated(results_table$))
+# table(duplicated(results_table$))
 
 
 

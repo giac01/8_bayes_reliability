@@ -1,4 +1,5 @@
 # Load Packages ----------------------------------------------------------------
+# Run analyses using the docker container
 
 library(tidyverse)
 library(gt)
@@ -112,7 +113,7 @@ results_table_long = results_table %>%
                         rmp_ub, h_ub, a_ub, irth_ub
                         ), names_to = c("name", ".value"), names_pattern = "(rmp|h|a|irth)_(.*)") 
 
-## Mean Sample reliability ---------------------------------------------------------
+## ASCOTS REUSLTS --------------------------------------------------------------
 
 results_table_long %>%
   # filter(name == "rmp") %>%
@@ -203,7 +204,7 @@ results_table_long %>%
   # write.csv(file.path("results_tables","2_results_performance_samplereliability.csv"))
 
 
-## Maximal Reliability Comparison ----------------------------------------------
+## Maximal Reliability  --------------------------------------------------------
 
 results_table_long %>%
   mutate(
@@ -444,13 +445,17 @@ results_table_cleaned %>%
   tab_spanner(label = "Estimator Performance", columns = c(contains("RMSE"),contains("EmpSE"), contains("bias"))) %>%
   tab_spanner(label = "Confidence/Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
   tab_footnote(
-    footnote = md(" n<sub>sim</sub> = number of simulations completed for this set of simulation parameters. 
-                    n<sub>obs</sub> = number of subjects per simulation.
-                    MSE = Mean Squared Error.
-                    Mean Length = Mean Length of credible or confidence interval. 
-                    The percentage of simulations where the MCMC algorithm had at least one divergent transition or E-BFMI value of less than .20 are shown.
-                    "
-    )) %>%
+    footnote = html("<b>n<sub>sim</sub></b> = number of simulations completed for this set of simulation parameters.
+                <b>n<sub>obs</sub></b> = number of subjects per simulation.
+                <b>RMSE</b> = Root Mean Squared Error.
+                <b>Coverage</b> = proportion of times the 95% credible intervals include the population reliability, which should be around 95%.
+                <b>estimand</b> = ASCOTS (Average Squared Correlation between Observed and True Scores).
+                <b>coef H</b> = Maximal Reliability Estimand (see manuscript).
+                <b>Mean Length</b> = Mean length of credible or confidence interval.
+                <b>% DT</b> = Percent of simulations with divergent transitions (applies to Bayesian measurement models only).
+                <b>% Low E-BFMI</b> = Percent of simulations with E-BFMI value of less than .20."
+    )
+  ) %>%
   tab_style(
     style = cell_fill(color = "lightgray"),
     locations = cells_body(
@@ -706,327 +711,4 @@ results_table %>%
   geom_hline(aes(yintercept = estimand), col = "red") +
   facet_wrap(~ loading_list_pretty2 + sample_sizes,
              scales = "free", ncol = 3)
-
-
-# OLD ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-
-
-## Do models without model fit issues fit better ?? ----------------------------
-
-# Does population coefficient H describe how well the observed factor scores and true scores correlate? -------------------
-
-## Correlation between cor(observed factor scores )
-
-results_table %>%
-  ggplot(aes(x = true_score_cor2, y = pop_coefh)) + 
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, col = "Red") +
-  facet_wrap(~n_items + sample_sizes) + 
-  labs(x = "cor(factor scores calculated with pop weights, true scores)^2", 
-       y = "pop reliability (true coefficient H)") +
-  geom_smooth(method = "lm") +
-  coord_cartesian(ylim = c(0,1), xlim=c(0,1))
-
-## Correlation between stan (with TRUE weights) and true scores?
-
-results_table %>%
-  ggplot(aes(x = ascots^2, y = pop_coefh)) + 
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, col = "Red") +
-  facet_wrap(~n_items + sample_sizes) +
-  labs(x = "cor(factor score from stan model, true scores)^2", 
-       y = "pop reliability (true coefficient H)") +
-  geom_smooth(method = "lm") +
-  coord_cartesian(ylim = c(0,1), xlim=c(0,1))
-ggsave(file.path("plots","2_stan_true_scot_plot.png"), width = 10, height = 6)
-
-results_table %>%
-  ggplot(aes(x = true_score_factor_score_cor2^2, y = pop_coefh)) + 
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, col = "Red") +
-  facet_wrap(~n_items + sample_sizes) +
-  labs(x = "cor(factor score from psych::fa, true scores)^2", 
-       y = "pop reliability (true coefficient H)") +
-  geom_smooth(method = "lm") +
-  coord_cartesian(ylim = c(0,1), xlim=c(0,1))
-
-
-## Correlation between sca and RMP?
-
-results_table %>%
-  filter(sample_sizes %in% c(200,500) & n_items == 4) %>%
-  ggplot(aes(x = ascots^2, y =  rmp_est)) + 
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, col = "Red") +
-  facet_wrap(~n_items + sample_sizes) +
-  labs(x = "cor(factor score from stan model, true scores)^2", 
-       y = "Estimated reliability (RMP)") +
-  geom_smooth(method = "lm") +
-  coord_fixed(ylim = c(0,1), xlim=c(0,1))
-# 
-# lm(rmp_est ~ I(ascots^2), data=results_table) %>% summary()
-# lm(pop_coefh ~ I(ascots^2), data=results_table) %>% summary()
-# lm(rmp_est ~ I(ascots^2), data=results_table) %>% confint()
-
-results_table %>%
-  filter(sample_sizes %in% c(200,500)  & n_items == 4) %>%
-  ggplot(aes(x = ascots^2, y =  pop_coefh)) + 
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, col = "Red") +
-  facet_wrap(~n_items + sample_sizes) +
-  labs(x = "cor(factor score from stan model, true scores)^2", 
-       y = "Population reliability (true coefficient H)") +
-  geom_smooth(method = "lm") +
-  coord_fixed(ylim = c(0,1), xlim=c(0,1))
-
-
-
-results_table %>%
-  # filter(sample_sizes %in% c(200,500)  & n_items == 4) %>%
-  ggplot(aes(x = pop_coefh, y =  rmp_est)) + 
-  geom_point() +
-  geom_errorbar(aes(ymin = rmp_lb, ymax = rmp_ub)) +
-  geom_abline(intercept = 0, slope = 1, col = "Red") +
-  facet_wrap(~n_items + sample_sizes) +
-  labs(x = "Relative Measurement Precision", 
-       y = "Population reliability (true coefficient H)") +
-  geom_smooth(method = "lm") +
-  coord_fixed(ylim = c(0,1), xlim=c(0,1))
-
-
-
-
-## Correlation between observed factor scores (with SAMPLE weights) and true scores? 
-
-
-
-
-
-
-# old --------------------------------------------------------------------------
-
-## Does population reliability influence results -------------------------------
-
-results_table_long %>%
-  mutate(
-    pop_coefh_dec = cut(pop_coefh, breaks = c(0,.2,.4,.6,.8, 1))
-  ) %>% 
-  group_by( pop_coefh_dec, name) %>%
-  mutate(
-    difference = est - pop_coefh,
-    ci_correct = (lb < pop_coefh & ub > pop_coefh),
-    ci_length  = ub - lb
-  ) %>%
-  summarise(
-    n = n(),
-    bias       = mean(difference),
-    mad      = mean(abs(difference)),
-    coverage = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - qnorm(0.975)*coverage_se,
-    coverage_ub = coverage + qnorm(0.975)*coverage_se,
-    mean_ci_length = mean(ci_length)
-  )
-
-## Does third minimum loading? influence results -------------------------------
-
-results_table_long %>%
-  filter(sample_sizes != 100) %>%
-  mutate(
-    third_min_loading = cut(third_min_loading, breaks = c(0,.2,.4,.6,.8, 1))
-  ) %>% 
-  group_by(third_min_loading, n_items, name) %>%
-  mutate(
-    difference = est - pop_coefh,
-    ci_correct = (lb < pop_coefh & ub > pop_coefh),
-    ci_length  = ub - lb
-  ) %>%
-  summarise(
-    n = n(),
-    bias       = mean(difference),
-    mad      = mean(abs(difference)),
-    coverage = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - qnorm(0.975)*coverage_se,
-    coverage_ub = coverage + qnorm(0.975)*coverage_se,
-    mean_ci_length = mean(ci_length)
-  )
-
-## Does nunmber of items influence results -------------------------------
-
-results_table_long %>%
-  filter(sample_sizes != 100) %>%
-  filter(name != "h") %>%
-  filter(third_min_loading >.3) %>%
-  group_by(n_items, name) %>%
-  mutate(
-    difference = est - pop_coefh,
-    ci_correct = (lb < pop_coefh & ub > pop_coefh),
-    ci_length  = ub - lb
-  ) %>%
-  summarise(
-    n = n(),
-    mad      = mean(abs(difference)),
-    bias       = mean(difference),
-    coverage = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n),
-    coverage_lb = coverage - qnorm(0.975)*coverage_se,
-    coverage_ub = coverage + qnorm(0.975)*coverage_se,
-    mean_ci_length = mean(ci_length)
-  )
-
-
-## What factors predict divergences? ------------------------------------------
-
-results_table %>% head()
-
-results_table %>%
-  group_by( sample_sizes, n_items, tau_equivalence) %>%
-  summarise(
-    sum_divergences = sum(diag_divergences_binary),
-    n               = n(),
-    perc_divergences = sum_divergences/n,
-    sum_ebfmi = sum(diag_ebfmi_binary),
-    perc_ebfmi = sum_ebfmi/n
-  ) %>%
-  arrange(desc(perc_ebfmi))
-
-model =
-results_table %>%
- glm(diag_ebfmi_binary ~ pop_ss_loading + n_items + sample_sizes, data = ., family = "binomial")
-
-model %>% summary()
-
-results_table %>%
-  mutate(
-    pop_ss_loading_decile = 
-  ) %>%
-  ggplot(aes(x = pop_ss_loading, y = ))
-
-results_table %>%
-  mutate(
-    diag_divergences_binary = as.numeric(diag_divergences > 0),
-    diag_ebfmi_binary = as.numeric(diag_ebfmi > 0)
-  ) %>%
-cor.test(~ diag_divergences_binary + pop_ss_loading, data = .)
-
-results_table %>%
-  mutate(
-    diag_divergences_binary = as.numeric(diag_divergences > 0),
-    diag_ebfmi_binary = as.numeric(diag_ebfmi > 0)
-  ) %>%
-  cor.test(~ diag_ebfmi_binary + pop_ss_loading, data = .)
-
-
-
-
-
-
-results_table %>%
-  # filter(pop_coefh>.3 & pop_coefh <.8) %>%
-  filter(diag_ebfmi==0) %>%
-  group_by(sample_sizes, tau_equivalence) %>%
-  summarise(
-    mad      = mean(abs(rmp_diff)),
-    bias       = mean((rmp_diff)),
-    coverage = length(which(ci_contain))/length(ci_contain),
-    mean_ci_length = mean(rel_ci_length),
-    n = n()
-  )
-
-results_table %>%
-  group_by(n_items) %>%
-  summarise(coverage = length(which(ci_contain))/length(ci_contain),
-            mean_ci_length = mean(rel_ci_length),
-            n = n())
-
-results_table %>%
-  pull(pop_coefh) %>%
-  hist()
-
-results_table %>%
-  # filter(sample_sizes == 2500) %>%
-  # filter(n_items == 6) %>%
-  ggplot(aes(x = pop_coefh, y = rel_est, col = factor(n_items), shape = tau_equivalence)) +
-  geom_abline(intercept = 0, slope = 1) + 
-  geom_point( size = 3) +
-  geom_errorbar(aes(ymin = rel_lb, ymax = rel_ub), width = .01) + 
-  theme_bw() + 
-  coord_cartesian(xlim=0:1, ylim = 0:1) + 
-  facet_wrap(~tau_equivalence)
-
-results_table %>%
-  ggplot(aes(x = pop_coefh, y = rel_est, col = sample_sizes, shape = tau_equivalence)) +
-  geom_abline(intercept = 0, slope = 1) + 
-  geom_point( size = 3) +
-  # geom_errorbar(aes(ymin = rel_lb, ymax = rel_ub), width = .01) + 
-  theme_bw() + 
-  coord_cartesian(xlim=0:1, ylim = 0:1) + 
-  facet_wrap(~tau_equivalence)
-
-
-
-results_table %>%
-  ggplot(aes(x = pop_coefh, y = (true_score_cor2), col = sample_sizes, shape = tau_equivalence)) +
-  geom_abline(intercept = 0, slope = 1) + 
-  geom_point( size = 3) +
-  theme_bw() + 
-  coord_cartesian(xlim=0:1, ylim = 0:1) + 
-  facet_wrap(~tau_equivalence)
-
-
-# Coverage analysis
-
-results_table %>%
-  group_by(sample_sizes, tau_equivalence) %>%
-  summarise(
-    mad      = mean(abs(rel_diff)),
-    bias       = mean((rel_diff)),
-    coverage = length(which(ci_contain))/length(ci_contain),
-    mean_ci_length = mean(rel_ci_length),
-    n = n()
-    )
-
-results_table %>%
-  group_by(n_items) %>%
-  summarise(coverage = length(which(ci_contain))/length(ci_contain),
-            mean_ci_length = mean(rel_ci_length),
-            n = n())
-
-results_table$pop_coefh %>% hist()
-
-library(gt)
-results_table %>%
-  gt() %>%
-  fmt_number()
-
-
-
-results_table %>%
-  rowid_to_column(var = "i") %>%
-  arrange(desc(abs(rel_diff))) %>%
-  gt() %>%
-  fmt_number()
-
-
-inspect = results[[14]]
-
-inspect$regression_factor_score=NULL
-
-
-# Check weird results -----------------------------------------
-
-results_table %>%
-  filter(loading_set==7) %>% 
-  filter(rmp_est<.1) %>%
-  slice(1:5)
-
-.Random.seed = results[[357]]$settings$seed
-
-results[[357]]
-
-
-results[[483]]
-
 
