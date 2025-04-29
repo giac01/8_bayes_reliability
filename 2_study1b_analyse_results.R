@@ -272,9 +272,13 @@ results_table_long %>%
          RMSE, RMSE_lb, RMSE_ub,
          bias, bias_lb, bias_ub,
          EmpSE, EmpSE_lb, EmpSE_ub,
-         coverage, coverage_lb, coverage_ub
+         coverage, coverage_lb, coverage_ub,
+         mean_ci_length
          ) %>%
-  write.csv(file.path("results_tables","2_results_method_comparison.csv"))
+  gt() %>%
+  gtsave(filename = file.path("results_tables","2_study1_performance_comparison.html"))
+
+  # write.csv(file.path("results_tables","2_results_method_comparison.csv"))
 
 # Check seeds ------------------------------------------------------------------
 n_results <- 10000
