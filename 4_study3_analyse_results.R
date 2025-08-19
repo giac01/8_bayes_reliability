@@ -471,8 +471,8 @@ results_table  %>%
       xmin = .5,
       xmax = 3.5,
       # Position the rectangle differently based on conditions
-      ymin = ifelse(learning_rate_sd == 0.4 & n_trials > 100, -.02, 0.65),
-      ymax = ifelse(learning_rate_sd == 0.4 & n_trials > 100, 0.24, 0.91)
+      ymin = ifelse(learning_rate_sd == 0.4 & n_trials > 100, .06, 0.69),
+      ymax = ifelse(learning_rate_sd == 0.4 & n_trials > 100, 0.27, 0.91)
     ),
     fill = "white",
     alpha = 0.4
@@ -483,18 +483,18 @@ results_table  %>%
       y = ifelse(learning_rate_sd == 0.4 & n_trials >= 200, 0, 0.89),
       x = factor(sample_sizes),
       label = paste0(
-        "bias = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.2f", bias)), "\n",
-        "RMSE = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", RMSE)), "\n",
-        "cov = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.2f", coverage)), "\n",
-        "EmpSE = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.2f", EmpSE)), "\n",
-        "N = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.f", n))
+        "B = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", bias)), "\n",
+        "E = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", RMSE)), "\n",
+        "C = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", coverage)), "\n"
+        # "EmpSE = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.2f", EmpSE)), "\n",
+        # "N = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.f", n))
       )
     ),
     # parse = TRUE,
     vjust = ifelse(results_table_cleaned$learning_rate_sd == 0.4 & 
                      results_table_cleaned$n_trials >= 200, 0, 1),
     hjust = 1,
-    size = 1.8,
+    size = 2.6,
     position = position_nudge(x=.42),
     col = "grey20"
   ) +

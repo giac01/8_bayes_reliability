@@ -527,8 +527,8 @@ results_table_long  %>%
       xmin = .5,
       xmax = 3.5,
       # Position the rectangle differently based on conditions
-      ymin = ifelse(sens_sigma == 0.4 & n_items >= 80, -.01, 0.66),
-      ymax = ifelse(sens_sigma == 0.4 & n_items >= 80, 0.24, 0.90)
+      ymin = ifelse(sens_sigma == 0.4 & n_items >= 80, .05, 0.68),
+      ymax = ifelse(sens_sigma == 0.4 & n_items >= 80, 0.26, 0.90)
     ),
     fill = "white",
     alpha = 0.4
@@ -540,17 +540,15 @@ results_table_long  %>%
       # y=.8,
       x = factor(sample_sizes),
       label = paste0(
-        "bias = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.2f", bias)), "\n",
-        "RMSE = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", sqrt(MSE))), "\n",
-        "cov = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.2f", coverage)), "\n",
-        "EmpSE = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.2f", EmpSE)), "\n",
-        "N = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.f", n))
+        "B = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", bias)), "\n",
+        "E = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", sqrt(MSE))), "\n",
+        "C = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", coverage)), "\n"
       )
     ),
     vjust = ifelse(results_table_cleaned2$sens_sigma == 0.4 &
                      results_table_cleaned2$n_items >= 80, 0, 1),
     hjust = 1,
-    size = 1.8,
+    size = 2.6,
     position = position_nudge(x=.42),
     col = "grey20"
   ) +

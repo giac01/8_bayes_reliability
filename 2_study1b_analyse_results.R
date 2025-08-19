@@ -610,6 +610,19 @@ results_table_long  %>%
     ) + 
   labs(y = "Sample reliability estimate", x = "Simulation Sample Size") +
   guides(col=guide_legend(title="Estimator")) +
+  geom_rect(
+    data = results_table_cleaned2,
+    inherit.aes = FALSE,
+    aes(
+      xmin = .5,
+      xmax = 3.5,
+      # Position the rectangle differently based on conditions
+      ymin = ifelse(loading_set == 7, .06, 0.66),
+      ymax = ifelse(loading_set == 7, 0.31, .90)
+    ),
+    fill = "white",
+    alpha = 0.4
+  ) +
   geom_text(
     data = results_table_cleaned2,
     aes(
@@ -617,20 +630,17 @@ results_table_long  %>%
       # y = .89,
       x = factor(sample_sizes),
       label = paste0(
-        "bias = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.2f", bias)), "\n",
-        "RMSE = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", sqrt(MSE))), "\n",
-        "cov = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.2f", coverage)), "\n",
-        "EmpSE = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.2f", EmpSE)), "\n",
-        "N = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.f", n))
-        
+        "B = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", bias)), "\n",
+        "E = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", sqrt(MSE))), "\n",
+        "C = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", coverage)), "\n"
       )
     ),
     vjust = ifelse(results_table_cleaned2$loading_list_pretty == " .7,  .6,  .5,  .5,  .4,  .4,  .4,  .3,  .3", 0, 1),
     # vjust = 1,
     hjust = 1,
-    size = 1.8,
+    size = 2.6,
     position = position_nudge(x=.42),
-    col = "grey46"
+    col = "grey20"
   ) +
   ggplot2::theme_bw() +
   theme(
