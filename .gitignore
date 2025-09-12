@@ -17,3 +17,8 @@ plots/*
 machine.file*
 *.out
 *.docx
+
+# Quarto cache and files folders
+*_cache/
+*_files/
+.quarto/
