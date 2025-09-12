@@ -1,0 +1,822 @@
+---
+title: "Tutorial: Calculating RMU reliability for a go/no-go task"
+author: "Giacomo Bignardi"
+date: "09/11/2025"
+date-modified: "09/11/2025"
+draft: true
+cache: true
+freeze: true
+format: 
+  html:
+    embed-resources: true
+    toc: true
+execute: 
+  warning: false
+  message: false
+categories:
+  - reliability
+  - cognition
+---
+
+# Introduction
+
+This is a brief walk-through of how to calculate reliability using the approach (relative measurement uncertainty; RMU) described in our [pre-print](www.addlink.com). 
+
+In this example, we will calculate RMU reliability for the `d'` parameter estimated from a go/no-go task. We will also compare our results to other methods, including test-retest, split-half and empirical reliability. 
+
+For a more detailed tutorial and background on signal detection theory models, I'd recommend the first few chapters of [Detection Theory: A User's Guide](https://www.routledge.com/Detection-Theory-A-Users-Guide/Hautus-Macmillan-Creelman/p/book/9781138320857) and [Matti Vourre's Excellent Blog](https://mvuorre.github.io/posts/2017-10-09-bayesian-estimation-of-signal-detection-theory-models/), which will explain how these models work in more detail.
+
+In this tutorial, I'm going to assume that you're familiar with the basics of Bayesian modelling and brms, and focus on the reliability methods. 
+
+## Load Data
+
+We'll use test-retest data from [Hedge, Powell & Sumner's reliability paradox paper](https://link.springer.com/article/10.3758/s13428-017-0935-1), pooling data from studies 1 and 2, which contain different participants. Retest data was collected three weeks after initial testing. Data from the paper is openly available, downloaded from [here](https://osf.io/cwzds/).
+
+Reference: [Hedge, C., Powell, G., & Sumner, P. (2018). The reliability paradox: Why robust cognitive tasks do not produce reliable individual differences. Behavior research methods, 50, 1166-1186.](https://link.springer.com/article/10.3758/s13428-017-0935-1)
+
+```{r}
+rm(list=ls(all.names = T))
+set.seed(10)
+library(tidyverse)
+library(tidybayes)
+library(brms)
+library(gt)
+
+path_to_data = file.path("data","osf_hedge_cwzds")
+data_files   = list.files(file.path("data","osf_hedge_cwzds"), all.files = TRUE, recursive = TRUE, pattern = ".csv$", full.names = TRUE )
+
+data_list    = lapply(data_files, function(x) 
+  read.csv(
+    file = x, 
+    header = FALSE,
+    col.names = c("block","trial","stimulus","condition","correct","rt")
+    )
+  )
+
+study_numbers       <- as.integer(sub(".*Study(\\d+)_P(\\d+)gng(\\d+)\\.csv", "\\1", data_files))
+participant_numbers <- as.integer(sub(".*Study(\\d+)_P(\\d+)gng(\\d+)\\.csv", "\\2", data_files))
+session_numbers     <- as.integer(sub(".*Study(\\d+)_P(\\d+)gng(\\d+)\\.csv", "\\3", data_files))
+
+for (i in seq_along(data_files)){
+  data_list[[i]]$study   = study_numbers[i]
+  data_list[[i]]$session = session_numbers[i]
+  if (study_numbers[i] == 2) {participant_numbers[i] = participant_numbers[i] + 1000}
+  data_list[[i]]$pps     = participant_numbers[i]
+}
+
+data_long = do.call("bind_rows", data_list)
+
+data_long = data_long %>%
+  arrange(pps, session)
+
+data_long %>%
+  slice(1:15) %>%
+  knitr::kable(
+    caption = "This is what our data looks like"
+  )
+```
+
+## Go/No-Go Task and Signal Detection Theory
+
+In this go/no-go task, one of four letters is shown on a screen. Participants are told to press the space bar as quickly as possible if three of the four letters appear on screen ("go" condition trials), and to not press the space bar if one of the letters appears on screen ("no-go" condition trials).
+
+```{r}
+#| echo: false
+
+# Create the data frame
+data <- data.frame(
+  Stimulus_Class = c("Go", "No-Go"),
+  Go = c("Hits", "False alarms"),
+  NoGo = c("Misses", "Correct rejections")
+)
+
+# Create the gt table
+table <- gt(data) %>%
+  tab_spanner(
+    label = "Response",
+    columns = c(Go, NoGo)
+  ) %>%
+  cols_label(
+    Stimulus_Class = "Condition",
+    Go = "Go",
+    NoGo = "No-Go"
+  ) %>%
+  tab_style(
+    style = cell_borders(sides = "all"),
+    locations = cells_body()
+  )
+
+# Print the table
+table
+
+
+```
+
+We will analyse the go/no-go task using a signal detection theory model to derive a measure of performance called sensitivity or `d'`. 
+
+The number of "go" responses, that is, trials when the participant presses the space bar, will be the outcome variable. Condition ("go" or "no-go") will be our predictor. Participants who are better on the task should have a high probability of responding "go" in the go condition, and a low probability of responding "go" in the no-go condition. 
+
+In this example, one could calculate `d'` directly using each participant's hit rate ($HR_i$; proportion of go responses in the go condition) and false alarm rate ($FAR_i$; proportion of go responses in the no-go condition), shown in the equation below. In fact, this gives us estimates of `d'` that are largely identical to the Bayesian method (see [Appendix A](#appendix-a-bayesian-vs-simple-d-estimates)), and one could calculate reliability utilizing the split-half method (see [Split-Half Reliability](#split-half-reliability)). However, this approach won't work for more complex models, which is where RMU is particularly helpful. 
+
+$$
+d'_i = \Phi^{-1}(HR_i) - \Phi^{-1}(FAR_i)
+$$ {#eq-dprime}
+
+Note that $\Phi^{-1}$ represents the inverse cumulative distribution function of the standard normal distribution (in R, this function is `qnorm()`). It converts values between 0-1 to z-scores.
+
+**To estimate RMU, we will model `d'` using a Bayesian random intercept and slope probit regression model.** This approach will allow us to estimate uncertainty in each participant's fitted `d'` value, and calculate RMU reliability.
+
+We will contrast code condition so that `condition_contrast = -1/2` for "no-go" trials, and `condition_contrast = +1/2` for "go" trials.
+
+The random intercept captures individuals' propensity to generally respond "go" regardless of condition.
+
+The random slope captures how well individuals shift their probability of responding "go" between conditions.
+
+The beta coefficient for condition_contrast approximately corresponds to the change in the probability of responding "go" between conditions.
+
+## Prepare Data for Modelling
+
+```{r}
+
+data_long_summarised = data_long %>%
+  group_by(pps, session, condition) %>%
+  summarise(
+    n         = n(),
+    n_correct = sum(correct),
+    .groups = 'drop'
+  ) %>%
+  ungroup() %>%
+  mutate(
+    n_go = ifelse(condition == 0, n_correct, n - n_correct),
+    condition_contrast = dplyr::case_when(
+      condition == 0 ~ .5,
+      condition == 2 ~ -.5
+    )
+  ) %>%
+  ungroup() %>%
+  mutate(
+      n_go = ifelse(n_go == n, n_go - 1, n_go),
+      n_go = ifelse(n_go == 0, 1, n_go)
+  ) %>%
+  arrange(pps)
+
+
+data_long_summarised %>%
+  select(pps, session, condition_contrast, n, n_go) %>% 
+  slice(1:10) %>%
+  knitr::kable(
+    caption = "First 10 lines of our cleaned data for analysis"
+  ) %>%
+  kableExtra::add_header_above(c("Unique Participant ID" = 1, "Testing Session" = 1, "Condition (contrast coded)" = 1, "Number of Trials" = 1, "Number of Go Responses in Condition" = 1))
+
+saveRDS(data_long_summarised, file = file.path("data","osf_hedge_cwzds","data_long_summarised.Rds"))
+```
+
+Instead of modelling each individual trial, we will sum the number of "go" responses in each condition for each participant. 
+
+Because we are assuming that the probability of responding 'go' only varies by condition and participant, we do not need the individual trial data.
+
+For example, if we wanted to estimate the probability of a flipped bent coin landing on heads, we just need to know the number of heads and number of throws, not the value of each individual coin toss.
+
+# Fit Bayesian Signal Detection Models
+
+In the next code chunk, we fit our models to each session (time point) and we extract the posterior draws of each subject's `d'` value at each time point into two matrices called `subj_draws_time_1` and `subj_draws_time_2`.
+
+I will stick with brms's default, weakly informative priors on the model parameters. 
+
+When initially running the models, we got a warning from Stan that "ESS is too low". We can address this by increasing the number of iterations (draws) per chain to 10,000 (setting `iter = 10000`). Note that half of these  draws are discarded as warmup iterations. Setting `chains = 4` and `cores = 4` tells Stan to fit 4 chains and run them in parallel across four CPU cores, which will give 20,000 post-warmup draws in total. 
+
+For calculating test-retest reliability, it makes sense to fit models at each time point (session) independently.  
+
+```{r}
+#| message: false
+#| warning: false
+#| results: 'hide'
+
+model_time_1 = brms::brm(
+  n_go | trials(n) ~  1 + condition_contrast + (1 + condition_contrast | pps),
+  family = binomial(link = "probit"),
+  data = filter(data_long_summarised, session == 1 ),
+  cores   = 4,
+  chains  = 4,
+  iter    = 10000
+)
+
+model_time_2 = brms::brm(
+  n_go | trials(n) ~  1 + condition_contrast + (1 + condition_contrast | pps),
+  family = binomial(link = "probit"),
+  data = filter(data_long_summarised, session == 2 ),
+  cores   = 4,
+  chains  = 4,
+  iter    = 10000
+)
+
+# Time Session 1 
+# Participant random effects of condition
+subj_draws_time_1 = as_draws_df(model_time_1) %>%
+                    select(ends_with("condition_contrast]")) %>%
+                    t() 
+
+# Main effect of condition
+cond_main_effect_1 = as_draws_df(model_time_1) %>%
+                     pull(b_condition_contrast) %>% 
+                     as.numeric()
+
+# Add main effect of condition to random effects 
+subj_draws_time_1 = subj_draws_time_1 + cond_main_effect_1
+
+
+# Time / Session 2
+# Participant random effects of condition
+subj_draws_time_2 = as_draws_df(model_time_2) %>%
+                    select(ends_with("condition_contrast]")) %>%
+                    t() 
+
+# Main effect of condition
+cond_main_effect_2 = as_draws_df(model_time_2) %>%
+                     pull(b_condition_contrast) %>% 
+                     as.numeric()
+
+# Add main effect of condition to random effects 
+subj_draws_time_2 = subj_draws_time_2 + cond_main_effect_2
+
+
+# Calculate point-estimate of `d'` for each participant (posterior means)
+# Time / Session 1
+subj_est_time_1 = apply(subj_draws_time_1, 1, mean)
+# Time / Session 2
+subj_est_time_2 = apply(subj_draws_time_2, 1, mean)
+
+
+```
+
+## Model results
+
+```{r}
+model_time_1
+model_time_2
+
+```
+
+Since random effects are centered (i.e., have a mean of zero), in the above code I have added the posterior distribution of the main effect of `condition_contrast` (which represents the average `d'` value across participants) to the random slope posteriors. This gives us posterior distributions that have the correct scaling for `d'`, but doesn't affect our reliability calculations. 
+
+**At this point, the procedures for estimating RMU reliability are the same regardless of the model we have used to estimate participant effects.** 
+
+For each of our models fitted to time 1 and time 2 data, we have a matrix with our posterior draws (`subj_draws_time_1` and `subj_draws_time_2`).
+
+Each matrix has 107 rows (one row for each subject) and 20,000 columns. Each row has the posterior draws for a given subject's `d'`. 
+
+Below, we show data from 4 posterior draws from the first 10 participants.
+
+Point estimates of `d'` for each participant could be estimated using the matrix row means (e.g., `rowMeans(subj_draws_time_1)`).
+
+
+```{r}
+
+subj_draws_time_1 %>%
+  data.frame() %>%
+  slice(1:10) %>%
+  select(1:4)
+
+nrow(subj_draws_time_1)
+ncol(subj_draws_time_2)
+
+```
+
+To visualize our uncertainty about each subject's true d' value, we can plot the posterior distribution for each subject's `d'` value.
+
+```{r}
+subj_draws_time_1 %>%
+  data.frame() %>%
+  rowid_to_column(var = "pps") %>%
+  pivot_longer(cols = !matches("pps")) %>%
+  ggplot(aes(x = value, group = pps)) +
+  geom_density(alpha = .2, fill = "light blue") +
+  labs(title = "Session 1: Posterior Distribution for each subject's Go/No-Go d' (sensitivity)")
+
+subj_draws_time_2 %>%
+  data.frame() %>%
+  rowid_to_column(var = "pps") %>%
+  pivot_longer(cols = !matches("pps")) %>%
+  ggplot(aes(x = value, group = pps)) +
+  geom_density(alpha = .2, fill = "light blue") +
+  labs(title = "Session 2: Posterior Distribution for each subject's Go/No-Go d' (sensitivity)")
+
+```
+
+From just eye-balling the posteriors, it is evident that there is a lot of variability between participants, and our estimates look quite precise. This suggests good reliability! 
+
+As expected, most of the mass of each density lies above 0. If `d'` is less than zero it would indicate that a participant is more likely to press the space bar (i.e., "go") for no-go conditions than go conditions, which would be odd.
+
+# Reliability Estimation Methods
+
+In the following sections, we will outline a few different methods of calculating reliability and compare their results. We'll estimate RMU, test-retest , split-half, and empirical reliability. 
+
+## RMU
+
+### Theory
+
+RMU estimates reliability using the posterior distributions for each subject's true `d'` value. 
+
+To estimate RMU, we take pairs of draws from each subject's posterior and calculate the correlation between these draws to get a single "draw" of RMU reliability. We repeat this process many times to build up a posterior distribution for reliability, from which we can calculate point estimates and credible intervals. 
+
+![RMU reliability estimation process](plots/9_posteriors.png)
+
+One can think of RMU as a way of simulating reliability by drawing test-retest estimates from the posterior distributions. It is closely related to the [empirical reliability](#empirical-reliability) estimator, which estimates reliability by comparing the variance of the posterior means to the average posterior variance across all subjects. 
+
+RMU reliability will increase when subjects' posterior means have greater variance (more between-subject differences), or when subjects' posterior distributions become narrower (more precise individual estimates).
+
+### Practice
+
+The code to calculate RMU using the posterior draw matrix is relatively simple. 
+
+You can either install my R package of miscellaneous R functions `gbtoolbox` available on github, or you can just load the reliability function directly from github. Both methods are outlined below:
+
+Install R package from github:
+
+```{r}
+#| output: false
+#| message: false
+#| warning: false
+
+devtools::install_github("giac01/gbtoolbox")
+
+```
+
+Or, you can just load the R function using:
+
+```{r}
+
+source("https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/reliability.R")
+
+```
+
+
+Calculate RMU reliability at each time point:
+
+```{r}
+
+rmu_time1 = reliability(subj_draws_time_1)
+rmu_time2 = reliability(subj_draws_time_2)
+
+rmu_time1$hdci
+rmu_time2$hdci
+
+
+
+```
+
+The analyses indicate that reliability at the first time point was `r round(rmu_time1$hdci$y*100)`% (95% Credible Interval = `r round(rmu_time1$hdci$ymin*100)`%-`r round(rmu_time1$hdci$ymax*100)`%), and at the second time point reliability was `r round(rmu_time2$hdci$y*100)`% (95% Credible Interval = `r round(rmu_time2$hdci$ymin*100)`%-`r round(rmu_time2$hdci$ymax*100)`%).
+
+## Test-Retest Reliability
+
+The test-retest reliability is a little lower than these estimates (r = `r round(cor(subj_est_time_1, subj_est_time_2),2)`):
+
+```{r}
+cor.test(subj_est_time_1, subj_est_time_2)
+```
+
+If there were no changes in individuals' latent (true) `d'` values across time points, the population test-retest reliability and RMU should be identical. Because some change over time is inevitable, test-retest reliability will usually be a bit lower than reliability estimates derived from a single time point. Indeed, at the end of this post we calculate split-half reliability at each session, which is even slightly higher than our RMU estimates. 
+
+### Calculating a posterior for test-retest reliability
+
+While `cor.test` gives us a confidence interval, if we want a posterior distribution for this correlation we can use the following code [thanks to Solomon Kurz for code](https://solomonkurz.netlify.app/blog/2019-02-16-bayesian-correlations-let-s-talk-options/).
+
+```{r}
+#| message: false
+#| warning: false
+#| results: 'hide'
+
+test_retest_cor = data.frame(subj_est_time_1, subj_est_time_2) %>%
+  brms::brm(
+       bf(mvbind(subj_est_time_2,subj_est_time_1 ) ~ 1,
+         sigma ~ 1) + set_rescor(TRUE),
+       data = .,
+       chains = 6,
+       cores = 6,
+       control = list(adapt_delta = .95)
+       )
+  
+tidybayes::get_variables(test_retest_cor)
+
+test_retest_cor_posterior = test_retest_cor %>%
+  tidybayes::spread_draws(rescor__subjesttime2__subjesttime1)
+
+
+```
+
+## Split-Half Reliability
+
+If we want to avoid model-fitting, another way of calculating reliability is to use split-half reliability. 
+
+To calculate split-half reliability, I created two datasets with odd and even trials respectively. I then calculated `d'` using the transformed hit and false alarm rates, and calculated the correlation between split-half estimates at each time point. 
+
+These correlations are then transformed using the [Spearman-Brown "prophecy" formula](https://en.wikipedia.org/wiki/Spearman–Brown_prediction_formula).
+
+The results are quite similar, though the split-half estimates are slightly higher.
+
+```{r}
+
+data_long_odd = data_long %>%
+  filter(trial %% 2 == 1) %>%
+  group_by(pps, session, condition) %>%
+    summarise(
+      n         = n(),
+      n_correct = sum(correct)
+    ) %>%
+    ungroup() %>%
+    mutate(
+      n_go = ifelse(condition == 0, n_correct, n - n_correct)
+    ) %>%
+    ungroup() %>%
+    mutate(
+      n_go = ifelse(n_go == n, n_go - 1, n_go),
+      n_go = ifelse(n_go == 0, 1, n_go)
+    ) %>%
+    arrange(pps) %>%
+    ungroup() %>%
+    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) %>%
+    pivot_wider(
+      id_cols = pps,
+      names_from = c(condition, session),
+      values_from = c(n, n_go),
+      names_glue = "{condition}_t{session}_{.value}"
+    ) %>%
+    mutate(
+      hit_rate_t1        = go_t1_n_go / go_t1_n,
+      falsealarm_rate_t1 = nogo_t1_n_go / nogo_t1_n,
+      hit_rate_t2        = go_t2_n_go / go_t2_n,
+      falsealarm_rate_t2 = nogo_t2_n_go / nogo_t2_n,
+      d_prime_t1         = qnorm(hit_rate_t1) - qnorm(falsealarm_rate_t1),
+      d_prime_t2         = qnorm(hit_rate_t2) - qnorm(falsealarm_rate_t2)
+    )
+
+data_long_even = data_long %>%
+  filter(trial %% 2 == 0) %>%
+  group_by(pps, session, condition) %>%
+    summarise(
+      n         = n(),
+      n_correct = sum(correct)
+    ) %>%
+    ungroup() %>%
+    mutate(
+      n_go = ifelse(condition == 0, n_correct, n - n_correct)
+    ) %>%
+    ungroup() %>%
+    mutate(
+      n_go = ifelse(n_go == n, n_go - 1, n_go),
+      n_go = ifelse(n_go == 0, 1, n_go)
+    ) %>%
+    arrange(pps) %>%
+    ungroup() %>%
+    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) %>%
+    pivot_wider(
+      id_cols = pps,
+      names_from = c(condition, session),
+      values_from = c(n, n_go),
+      names_glue = "{condition}_t{session}_{.value}"
+    ) %>%
+    mutate(
+      hit_rate_t1        = go_t1_n_go / go_t1_n,
+      falsealarm_rate_t1 = nogo_t1_n_go / nogo_t1_n,
+      hit_rate_t2        = go_t2_n_go / go_t2_n,
+      falsealarm_rate_t2 = nogo_t2_n_go / nogo_t2_n,
+      d_prime_t1         = qnorm(hit_rate_t1) - qnorm(falsealarm_rate_t1),
+      d_prime_t2         = qnorm(hit_rate_t2) - qnorm(falsealarm_rate_t2)
+    )
+
+split_half_cor_t1 = cor(data_long_odd$d_prime_t1, data_long_even$d_prime_t1)
+split_half_cor_t2 = cor(data_long_odd$d_prime_t2, data_long_even$d_prime_t2)
+
+data.frame(
+  par = c("Split Half Correlation (T1)", "Split Half Correlation (T2)", "Split-Half Reliability", "Split-Half Reliability"),
+  val = c(
+    split_half_cor_t1,
+    split_half_cor_t2,
+    (2*split_half_cor_t1)/(1+split_half_cor_t1),
+    (2*split_half_cor_t2)/(1+split_half_cor_t2))
+) %>% 
+  knitr::kable(
+    digits = 4, 
+    caption = "Split-Half Correlations and Spearman-Brown Corrected Split-Half Reliabilities"
+    )
+```
+
+## Empirical Reliability
+
+Finally, the empirical reliability method involves calculating the variance of the posterior means ($\hat{\boldsymbol{\theta}}$) and average posterior variance across subjects ($\hat{\boldsymbol{V}}_i$). 
+
+Empirical reliability can also be used with maximum likelihood estimates of `d'` and error variances - which can make it appealing to those less familiar with Bayesian methods. Instead of brms/stan, you could use lme4 or other packages to fit the signal detection theory model using maximum likelihood. However, I'm not aware of any methods to get uncertainty intervals with empirical reliability, beyond perhaps bootstrapping. 
+
+$$
+\text{Empirical Reliability} = \frac{\text{Var}(\hat{\boldsymbol{\theta}})}{\text{Var}(\hat{\boldsymbol{\theta}}) + \sum_{i=1}^{N} \hat{\boldsymbol{V}}_i / N}
+$$ {#eq-empirical-reliability}
+
+```{r}
+variance_posterior_means_t1 = var(apply(subj_draws_time_1, 1, mean))
+variance_posterior_means_t2 = var(apply(subj_draws_time_2, 1, mean))
+average_posterior_variance_t1 = mean(apply(subj_draws_time_1, 1, var))
+average_posterior_variance_t2 = mean(apply(subj_draws_time_2, 1, var))
+
+empirical_reliability_t1 = variance_posterior_means_t1 / (variance_posterior_means_t1 + average_posterior_variance_t1)
+
+empirical_reliability_t2 = variance_posterior_means_t2 / (variance_posterior_means_t2 + average_posterior_variance_t2)
+
+data.frame(
+  Method = c("RMU Session 1", "RMU Session 2", "Empirical Session 1", "Empirical Session 2"),
+  Reliability = c(
+    rmu_time1$hdci$y,
+    rmu_time2$hdci$y,
+    empirical_reliability_t1,
+    empirical_reliability_t2
+  )
+) %>% 
+  knitr::kable(
+    digits = 4, 
+    caption = "Comparison of RMU and Empirical Reliability Point Estimates"
+    )
+
+```
+
+
+# Compare RMU and Test-Retest Reliability Posteriors
+
+We can visually compare our reliability posteriors derived from RMU using session 1 and 2 data, to the test-retest reliability estimate. 
+
+```{r}
+
+bind_rows(
+  data.frame(par = "Test-Retest Posterior", val = test_retest_cor_posterior$rescor__subjesttime2__subjesttime1),
+  data.frame(par = "RMU Session 1", val = rmu_time1$reliability_posterior),
+  data.frame(par = "RMU Session 2", val = rmu_time2$reliability_posterior)
+) %>%
+  ggplot(aes(x = val, group = par, col = par, fill = par)) +
+  geom_density(alpha = .3) + 
+  theme_bw() + 
+  theme(
+    legend.position = c(.1, .9),
+    legend.justification = c(0, 1)
+  ) + 
+  labs(title = "Posterior distribution for reliability estimates")
+
+```
+
+# Appendix A: Bayesian vs. Simple d' Estimates
+
+If we just calculate `d'` using the transformed hit rate and false alarm rate, using the formula shown in @eq-dprime, does this give us estimates that are very different, or less reliable?
+
+The answer in this case seems to be no, the estimates are very similar regardless of which approach we take:
+
+```{r}
+
+two_stage_estimate = 
+ data_long_summarised %>%
+  select(-condition_contrast) %>%
+  mutate(condition = factor(ifelse(condition==0,"go","nogo"))) %>%
+  # correct perfect scores
+  rowwise() %>%
+  # mutate(
+  #   n_go = ifelse(n_go ==450 & condition=="go",   449.5, n_go),
+  #   n_go = ifelse(n_go ==0,                       .5   , n_go),
+  #   n_go = ifelse(n_go ==150 & condition=="nogo", 149.5, n_go)
+  # ) %>%
+  pivot_wider(
+    id_cols = pps,
+    names_from = c(condition, session),
+    values_from = c(n, n_go),
+    names_glue = "{condition}_t{session}_{.value}"
+              ) %>%
+  mutate(
+    hit_rate_t1        = go_t1_n_go/(go_t1_n),
+    falsealarm_rate_t1 = nogo_t1_n_go/nogo_t1_n,
+    hit_rate_t2        = go_t2_n_go/go_t2_n,
+    falsealarm_rate_t2 = nogo_t2_n_go/nogo_t2_n,
+    d_prime_t1         = qnorm(hit_rate_t1) - qnorm(falsealarm_rate_t1),
+    d_prime_t2         = qnorm(hit_rate_t2) - qnorm(falsealarm_rate_t2)
+  )
+
+data_plot = data.frame(
+  `Simple d' T1` = two_stage_estimate$d_prime_t1,
+  `Simple d' T2` = two_stage_estimate$d_prime_t2,
+  `Bayes d' T1` = subj_est_time_1,
+  `Bayes d' T2` = subj_est_time_2
+)
+
+data_plot %>%
+  ggplot(aes(x = Simple.d..T1, Bayes.d..T1)) + 
+  geom_abline(slope = 1, intercept = 0) +
+  geom_point() + 
+  theme_bw() + 
+  annotate("text", x = 1, y = 4.5, 
+           label = paste("Correlation: ", round(cor(two_stage_estimate$d_prime_t1,subj_est_time_1), 4)), 
+           hjust = 0, vjust = 1, size = 8) +
+  labs(
+    x = "Simple d' T1",
+    y = "Bayes d' T1",
+    title = "Correlation between Bayesian regression d' and simple estimates",
+    subtitle = "Simple estimates = qnorm(hit rate) - qnorm(false alarm rate)"
+  )
+
+data_plot %>%
+  ggplot(aes(x = Simple.d..T2, Bayes.d..T2)) + 
+  geom_abline(slope = 1, intercept = 0) +
+  geom_point() + 
+  theme_bw() + 
+  annotate("text", x = 1, y = 4.5, 
+           label = paste("Correlation: ", round(cor(two_stage_estimate$d_prime_t2,subj_est_time_2), 4)), 
+           hjust = 0, vjust = 1, size = 8) +
+  labs(
+    x = "Simple d' T2",
+    y = "Bayes d' T2",
+    title = "Correlation between Bayesian d' and simple d' estimates",
+    subtitle = "Simple estimates = qnorm(hit rate) - qnorm(false alarm rate)"
+  ) 
+
+  
+
+```
+
+This example highlights that there isn't anything magical about Bayesian or more fancy statistical methods. They don't provide better estimates by default.
+
+This doesn't mean that the regression approach to calculating `d'` is pointless. As we have shown, we can easily calculate  reliability from our Bayesian regression model - even without retest data. We could also calculate a credible interval for any participant's true `d'` score. We can also handle more complex signal detection theory models within a regression approach, or we could control for time of day or practice effects, and  more.
+
+
+```{r}
+#| eval: false
+#| include: false
+# Resampling approach
+
+calc_dprime <- function(df) {
+  processed_df <- df %>%
+    select(-condition_contrast) %>%
+    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) %>%
+    pivot_wider(
+      id_cols = pps,
+      names_from = c(condition, session),
+      values_from = c(n, n_go),
+      names_glue = "{condition}_t{session}_{.value}"
+    ) %>%
+    mutate(
+      hit_rate_t1        = go_t1_n_go / go_t1_n,
+      falsealarm_rate_t1 = nogo_t1_n_go / nogo_t1_n,
+      hit_rate_t2        = go_t2_n_go / go_t2_n,
+      falsealarm_rate_t2 = nogo_t2_n_go / nogo_t2_n,
+      d_prime_t1         = qnorm(hit_rate_t1) - qnorm(falsealarm_rate_t1),
+      d_prime_t2         = qnorm(hit_rate_t2) - qnorm(falsealarm_rate_t2)
+    )
+
+  # cor_value <- cor(processed_df$d_prime_t1, processed_df$d_prime_t2, use = "complete.obs")
+  
+  return(processed_df)
+}
+
+summarise_data = function(df){
+  df  = df %>%
+    group_by(pps, session, condition) %>%
+    summarise(
+      n         = n(),
+      n_correct = sum(correct)
+    ) %>%
+    ungroup() %>%
+    mutate(
+      n_go = ifelse(condition == 0, n_correct, n - n_correct),
+      condition_contrast = dplyr::case_when(
+        condition == 0 ~ .5,
+        condition == 2 ~ -.5
+      )
+    ) %>%
+    ungroup() %>%
+    mutate(
+      n_go = ifelse(n_go ==450 & condition==0, 449, n_go),
+      n_go = ifelse(n_go == 0, 1, n_go),
+      n_go = ifelse(n_go ==150 & condition==2, 149, n_go)
+    ) %>%
+    arrange(pps) %>%
+    ungroup()
+  
+  return(df)
+}
+
+session1_splithalf = vector()
+session2_splithalf = vector()
+
+for (i in 1:100){
+  
+  data_long_resampled_half1 = data_long  %>%
+    group_by(pps, session, condition) %>%
+    group_modify(~ .x %>% slice_sample(n = nrow(.x), replace = TRUE)) %>%
+    bind_rows() %>%
+    ungroup()
+  
+  data_long_resampled_half2 = data_long  %>%
+    group_by(pps, session, condition) %>%
+    group_modify(~ .x %>% slice_sample(n = nrow(.x), replace = TRUE)) %>%
+    bind_rows() %>%
+    ungroup() %>% 
+    mutate(half = 2)
+  
+  data_long_resampled_half1 = data_long_resampled_half1 %>%
+    summarise_data() %>%
+    calc_dprime() %>%
+    mutate(half = 1)
+
+  data_long_resampled_half2 = data_long_resampled_half2 %>%
+    summarise_data() %>%
+    calc_dprime() %>%
+    mutate(half = 2)
+  
+  session1_splithalf[i] = cor(data_long_resampled_half1$d_prime_t1, 
+                              data_long_resampled_half2$d_prime_t1)
+
+  session2_splithalf[i] = cor(data_long_resampled_half1$d_prime_t2, 
+                              data_long_resampled_half2$d_prime_t2)  
+  
+}
+
+```
+
+```{r}
+#| eval: false
+#| include: false
+library(dplyr)
+library(tidyr)
+
+# Define the functions
+calc_dprime <- function(df) {
+  df %>%
+    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) %>%
+    pivot_wider(
+      id_cols = pps,
+      names_from = c(condition, session),
+      values_from = c(n, n_go),
+      names_glue = "{condition}_t{session}_{.value}"
+    ) %>%
+    mutate(
+      hit_rate_t1        = go_t1_n_go / go_t1_n,
+      falsealarm_rate_t1 = nogo_t1_n_go / nogo_t1_n,
+      hit_rate_t2        = go_t2_n_go / go_t2_n,
+      falsealarm_rate_t2 = nogo_t2_n_go / nogo_t2_n,
+      d_prime_t1         = qnorm(hit_rate_t1) - qnorm(falsealarm_rate_t1),
+      d_prime_t2         = qnorm(hit_rate_t2) - qnorm(falsealarm_rate_t2)
+    )
+}
+
+summarise_data <- function(df) {
+  df %>%
+    group_by(pps, session, condition) %>%
+    summarise(
+      n = n(),
+      n_correct = sum(correct),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      n_go = ifelse(condition == 0, n_correct, n - n_correct),
+      condition_contrast = ifelse(condition == 0, 0.5, -0.5),
+      n_go = ifelse(n_go == 450 & condition == 0, 449, n_go),
+      n_go = ifelse(n_go == 0, 1, n_go),
+      n_go = ifelse(n_go == 150 & condition == 2, 149, n_go)
+    ) %>%
+    arrange(pps)
+}
+
+# Initialize vectors for storing split-half reliability
+session1_splithalf <- numeric(100)
+session2_splithalf <- numeric(100)
+
+# Loop to calculate split-half reliability
+for (i in 1:100) {
+  resampled_data <- data_long %>%
+    group_by(pps, session, condition) %>%
+    nest() %>%
+    mutate(
+      half1 = map(data, ~ slice_sample(.x, n = nrow(.x), replace = TRUE)),
+      half2 = map(data, ~ slice_sample(.x, n = nrow(.x), replace = TRUE))
+    ) %>%
+    select(-data) %>%
+    unnest(cols = c(half1, half2), names_sep = "_") %>%
+    ungroup()
+  
+  data_long_resampled_half1 <- resampled_data %>%
+    select(condition, session, pps, contains("half1")) %>%
+    rename_with(~ gsub("half1_", "", .)) %>%
+    summarise_data() %>%
+    calc_dprime()
+  
+  data_long_resampled_half2 <- resampled_data %>%
+    select(condition, session, pps, contains("half2")) %>%
+    rename_with(~ gsub("half2_", "", .)) %>%
+    summarise_data() %>%
+    calc_dprime()
+  
+  session1_splithalf[i] <- cor(data_long_resampled_half1$d_prime_t1, data_long_resampled_half2$d_prime_t1)
+  session2_splithalf[i] <- cor(data_long_resampled_half1$d_prime_t2, data_long_resampled_half2$d_prime_t2)
+}
+
+# Print the results
+print(session1_splithalf)
+print(session2_splithalf)
+
+hist(session1_splithalf)
+hist(session2_splithalf)
+
+```
