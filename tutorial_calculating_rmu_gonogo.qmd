@@ -3,7 +3,6 @@ title: "Tutorial: Calculating RMU reliability for a go/no-go task"
 author: "Giacomo Bignardi"
 date: "09/11/2025"
 date-modified: "09/11/2025"
-draft: true
 cache: true
 freeze: true
 format: 
@@ -20,7 +19,7 @@ categories:
 
 # Introduction
 
-This is a brief walk-through of how to calculate reliability using the approach (relative measurement uncertainty; RMU) described in our [pre-print](www.addlink.com). 
+This is a brief walk-through of how to calculate reliability using the approach (relative measurement uncertainty; RMU) described in our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1/). 
 
 In this example, we will calculate RMU reliability for the `d'` parameter estimated from a go/no-go task. We will also compare our results to other methods, including test-retest, split-half and empirical reliability. 
 
