@@ -252,6 +252,11 @@ results_table_cleaned = results_table %>%
     mean_lb     = mean - qnorm(0.975)*mean_se,
     mean_ub     = mean + qnorm(0.975)*mean_se,
     
+    #Min and Max (for results section)
+    
+    # min         = min(est),
+    # max         = max(est),
+    
     # Empirical Standard Error 
     EmpSE       = sd(est),
     EmpSE_se    = EmpSE/sqrt(2*(n-1)),
