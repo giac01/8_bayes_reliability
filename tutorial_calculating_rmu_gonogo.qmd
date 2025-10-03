@@ -367,7 +367,7 @@ rmu_time2$hdci
 
 ```
 
-The analyses indicate that reliability at the first time point was `r round(rmu_time1$hdci$rmu_estimate*100)`% (95% Credible Interval = `r round(rmu_time1$hdci$lowerbound*100)`%-`r round(rmu_time1$hdci$upperbound*100)`%), and at the second time point reliability was `r round(rmu_time2$hdci$rmu_estimate*100)`% (95% Credible Interval = `r round(rmu_time2$hdci$lowerbound*100)`%-`r round(rmu_time2$hdci$upperbound*100)`%).
+The analyses indicate that reliability at the first time point was `r round(rmu_time1$hdci$rmu_estimate*100)`% (95% Credible Interval = `r round(rmu_time1$hdci$hdci_lowerbound*100)`%-`r round(rmu_time1$hdci$hdci_upperbound*100)`%), and at the second time point reliability was `r round(rmu_time2$hdci$rmu_estimate*100)`% (95% Credible Interval = `r round(rmu_time2$hdci$hdci_lowerbound*100)`%-`r round(rmu_time2$hdci$hdci_upperbound*100)`%).
 
 ## Test-Retest Reliability
 
