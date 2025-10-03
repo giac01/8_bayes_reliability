@@ -3252,7 +3252,7 @@ window.Quarto = {
 <h1 class="title">Estimating Mean Score Reliability with RMU</h1>
   <div class="quarto-categories">
     <div class="quarto-category">reliability</div>
-    <div class="quarto-category">cognition</div>
+    <div class="quarto-category">psychometrics</div>
   </div>
   </div>
 
@@ -3579,23 +3579,23 @@ Total execution time: 50.0 seconds.</code></pre>
 <p>Given that we know the distribution of each measurement, the distribution of a mean of multiple independent measurements is also Normal but with a smaller variance (note that as J increases, the variance decreases):</p>
 <p><span class="math display">\[
 \begin{aligned}
-\hat{y}_i &amp;= \frac{1}{J}\sum_{j=1}^{J} y_{ij} \\
-&amp;= \frac{1}{J}\sum_{j=1}^{J} (\theta_i + \epsilon_{ij}) \\
-&amp;= \theta_i + \sum_{j=1}^{J} \frac{\epsilon_{ij}}{J}  \\
+\hat{y}_i &amp;= \frac{1}{\text{J}}\sum_{j=1}^{\text{J}} y_{ij} \\
+&amp;= \frac{1}{\text{J}}\sum_{j=1}^{\text{J}} (\theta_i + \epsilon_{ij}) \\
+&amp;= \theta_i + \sum_{j=1}^{\text{J}} \frac{\epsilon_{ij}}{\text{J}}  \\
 &amp;= \theta_i + \mathcal{E}_i   \\
-\mathcal{E}_i &amp;=\frac{\epsilon_{i1} + \epsilon_{i2} + \dots + \epsilon_{iJ}}{J} \sim \text{Normal}(0,\frac{ \sigma^2_{\epsilon} }{J})
+\mathcal{E}_i &amp;=\frac{\epsilon_{i1} + \epsilon_{i2} + \dots + \epsilon_{i\text{J}}}{\text{J}} \sim \text{Normal}(0,\frac{ \sigma^2_{\epsilon} }{\text{J}})
 \end{aligned}
 \]</span></p>
-<p>To work out the variance of the mean score for subject <em>i</em>, note that the variance of the sum of J independent normally distributed variables (<span class="math inline">\(\epsilon_{i1} + \epsilon_{i2} + \dots + \epsilon_{iJ}\)</span>) is equal to <span class="math inline">\(J\sigma^2_{\epsilon}\)</span>, and dividing by a constant J <a href="https://en.wikipedia.org/wiki/Variance#Addition_and_multiplication_by_a_constant">divides the variance</a> by <span class="math inline">\(J^2\)</span>.</p>
+<p>To work out the variance of the mean score for subject <em>i</em>, note that the variance of the sum of J independent normally distributed variables (<span class="math inline">\(\epsilon_{i1} + \epsilon_{i2} + \dots + \epsilon_{i\text{J}}\)</span>) is equal to <span class="math inline">\(\text{J}\sigma^2_{\epsilon}\)</span>, and dividing by a constant J <a href="https://en.wikipedia.org/wiki/Variance#Addition_and_multiplication_by_a_constant">divides the variance</a> by <span class="math inline">\(\text{J}^2\)</span>.</p>
 </section>
 <section id="reliability-formula" class="level3">
 <h3 class="anchored" data-anchor-id="reliability-formula">Reliability Formula</h3>
 <p>Reliability is the ratio of true score variance divided by the observed score variance:</p>
 <p><span class="math display">\[
 \begin{aligned}
-R(\hat{\mathbf{y}}) &amp;= R(\mathbf{\theta}+\mathcal{E})\\
-&amp;=\frac{Var(\mathbf{\theta})}{Var(\mathbf{\theta})+Var(\mathcal{E})} \\
-&amp;= \frac{\sigma^2_{\theta}}{\sigma^2_{\theta}+\sigma^2_{\epsilon}/J}
+\text{R}(\hat{\mathbf{y}}) &amp;= \text{R}(\mathbf{\theta}+\mathcal{E})\\
+&amp;=\frac{\text{Var}(\mathbf{\theta})}{\text{Var}(\mathbf{\theta})+\text{Var}(\mathcal{E})} \\
+&amp;= \frac{\sigma^2_{\theta}}{\sigma^2_{\theta}+\sigma^2_{\epsilon}/\text{J}}
 \end{aligned}
 \]</span></p>
 <p>This formula shows that reliability increases as we add more items (J increases), because the error variance gets divided by J.</p>
