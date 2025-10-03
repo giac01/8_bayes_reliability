@@ -1,0 +1,283 @@
+---
+title: "Estimating Mean Score Reliability with RMU"
+author: "Giacomo Bignardi"
+date: "10/2/2025"
+date-modified: "10/2/2025"
+cache: true
+freeze: true
+format: 
+  html:
+    embed-resources: true
+    toc: true
+execute: 
+  warning: false
+  message: false
+categories:
+  - reliability
+  - cognition
+---
+
+# Introduction
+
+This tutorial demonstrates how to use Relative Measurement Uncertainty (RMU) to estimate mean score reliability. See our [pre-print](https://osf.io/h54k8) for more information on RMU.
+
+# Set Up
+
+Imagine we measure the length of 5000 mice 5 times each. Every time we measure a mouse, we will get a slightly different measurement (have you tried holding a mouse with one hand and holding a ruler in another?).
+
+In this example, imagine that each measurement from each subject follows a normal distribution with a fixed mean (called the "true score" in psychometrics; $\theta_i$) and fixed variance ($\sigma^2_{\epsilon}$). Assume that this measurement error variance ($\sigma^2_{\epsilon}$) is the same across all participants.
+
+The final important parameter to consider is the variance in mouse true scores across the mouse population ($\sigma^2_{\theta}$).
+
+To illustrate, let's simulate some data:
+
+```{r}
+library(brms)
+library(tidyverse)
+library(psych)
+
+rm(list=ls())
+set.seed(1)
+N                   = 5000 # number of subjects (mice)
+J                   = 5   # number of measurements per subject
+true_score_variance = 3
+error_variance      = 2
+
+df = expand.grid(j = 1:J, mouse = 1:N)
+
+true_scores       = rnorm(N, mean = 10, sd = sqrt(true_score_variance))
+measurement_error = rnorm(N*J, mean = 0, sd = sqrt(error_variance))
+
+df$measurement = true_scores[df$mouse] + measurement_error
+
+df_average_lengths = df %>%
+  group_by(mouse) %>%
+  summarise(average_measurement = mean(measurement))
+
+```
+
+In the above example, we can work out the reliability of the mean score using J, $\sigma^2_{\epsilon}$ and $\sigma^2_{\theta}$:
+
+$$
+\begin{aligned}
+R(\hat{\mathbf{y}}) &= \frac{\sigma^2_{\theta}}{\sigma^2_{\theta}+\sigma^2_{\epsilon}/\text{J}} \\
+&= \frac{3}{3+2/5}= 0.882
+\end{aligned}
+$$
+
+In case you don't trust me, the derivation for this formula is in the [appendix](#sec-appendix). However, we can also check its correct by computing the squared correlation between the observed mean scores and true scores:
+
+```{r}
+
+cor(df_average_lengths$average_measurement, true_scores)^2 
+
+```
+
+# Estimating Reliability
+
+It's worth noting that the Bayesian measurement model we employ in this example effectively makes the same assumptions as coefficient alpha - which if violated can lead to bias ([this paper](https://pubmed.ncbi.nlm.nih.gov/28557467/) covers the assumptions of alpha nicely).
+
+However, with RMU, we can make our model more complex (e.g., use an alternative outcome distribution, add parameters, etc.) to account for any quirks with our measurements. For example, for modelling reaction times, you may want to use [a more appropriate distribution](https://lindeloev.github.io/shiny-rt/). 
+
+We will keep our model simple in this example - but if you want to apply this code to real data - its worth considering whether the model assumptions are met! 
+
+## (1) Coefficient alpha
+
+We can estimate reliability using (unstandardised) coefficient alpha. First, we need to pivot_wider our dataset so that each row represents a mouse and our five measurements are on five columns:
+
+```{r}
+
+df_wide = df %>%
+  pivot_wider(
+    id_cols = mouse,
+    names_from = j,
+    values_from = measurement,
+    names_prefix = "measurement"
+  )
+
+df_wide %>% 
+  head()
+
+
+```
+
+Coefficient alpha calc also gives us .88!
+
+```{r}
+
+alpha = psych::alpha(df_wide[-1])$total$raw_alpha
+
+alpha_ci = psych::alpha.ci(alpha = alpha, n.obs = N, n.var = J, digits = 4)
+
+alpha_ci
+```
+
+## (2) RMU
+
+To calculate RMU, we need to first fit a Bayesian measurement model, and then extract a matrix of posterior draws for each mouse's length parameter.
+
+We can use a simple random intercept multilevel model, as shown below.
+
+To fit the model, we use a "long" dataset which has a column for measurement, and a column to indicate mouse. Note that multiple measurements from each mouse are stored in the same column (measurement).
+
+```{r}
+head(df)
+```
+
+### Fit brms Multilevel Model
+
+Let's fit our model:
+
+```{r}
+#| output: false
+
+set.seed(1)
+
+brms_model = brm(
+  measurement ~ 1 + (1 | mouse),
+  data    = df,
+  chains  = 4, 
+  cores   = 4,
+  backend = "cmdstanr",  # This is to speed up model fitting using parallelization
+  threads = threading(2) # This is to speed up model fitting using parallelization
+  )
+
+```
+
+And look at our results:
+
+```{r}
+summary(brms_model)
+```
+
+Our fitted model has the following structure (rounded to whole numbers):
+
+$$
+  \begin{aligned}
+  measurement_{ij} &= 10 + \theta_{j} + \epsilon_{ij} \\
+  \theta_{j} &\sim N(0, 3) \quad \text{(mouse random-intercepts)}\\
+  \epsilon_{ij} &\sim N(0, 2) \quad \text{(measurement error)}
+  \end{aligned}
+$$
+
+### Calculate RMU
+
+To calculate RMU, extract the posterior draws for each mouse's random intercept parameter, and plug the matrix of draws into the reliability function:
+
+```{r}
+
+posterior_draws = brms_model %>%
+  as_draws_df() %>%
+  select(starts_with("r_mouse")) %>%
+  t()
+
+nrow(posterior_draws) # should equal the number of subjects
+ncol(posterior_draws) # should equal the number of post-warmup posterior draws
+
+gbtoolbox::reliability(posterior_draws)$hdci
+
+```
+
+Remember to check that the matrix of draws has subjects on the rows and draws on the columns. We can check this because we know we have 5000 subjects, and the function has confirmed this is the case.
+
+# Recap of simulation code
+
+Just to check this wasn't a fluke, we can play around with the parameters J and true_score_variance and error_variance below to show that we get the correct result across different simulation conditions:
+
+```{r}
+rm(list=ls())
+set.seed(1)
+N                   = 5000 # number of subjects (mice)
+J                   = 3    # number of measurements per subject
+true_score_variance = 1
+error_variance      = 10
+
+df = expand.grid(j = 1:J, mouse = 1:N)
+
+true_scores       = rnorm(N, mean = 10, sd = sqrt(true_score_variance))
+measurement_error = rnorm(N*J, mean = 0, sd = sqrt(error_variance))
+
+df$measurement = true_scores[df$mouse] + measurement_error
+
+df_average_lengths = df %>%
+  group_by(mouse) %>%
+  summarise(average_measurement = mean(measurement))
+
+cat("Simulation reliability = ")
+
+true_score_variance/(true_score_variance+error_variance/J)
+
+cat("Squared Correlation between mean and true scores  = ")
+# This may slightly differ to above due to sampling variance
+
+cor(df_average_lengths$average_measurement, true_scores)^2
+
+# Fit model and calculate RMU
+# I've reduced the number of MCMC chains here to two for speed - you may want more in practice!
+
+brms_model = brm(
+  measurement ~ 1 + (1 | mouse),
+  data    = df, 
+  chains  = 2, 
+  cores   = 2,
+  refresh = 0,
+  backend = "cmdstanr",  # This is to speed up model fitting using parallelization
+  threads = threading(4) # This is to speed up model fitting using parallelization
+  )
+
+posterior_draws = brms_model %>%
+  as_draws_df() %>%
+  select(starts_with("r_mouse")) %>%
+  t()
+
+gbtoolbox::reliability(posterior_draws)$hdci
+
+```
+
+# Appendix: Deriving The Mean Score Reliability Formula {#sec-appendix}
+
+Consider a measurement model where we measure *N* participants, and we measure each participant *J* times (or across J items). Each participant has a true score $\theta_i$ which represents the *expected* measurement for participant *i*.
+
+We assume that measurements from a given subject follow a normal distribution with mean ($\theta_i$) and variance ($\sigma^2_{\epsilon}$).
+
+We assume that the distribution of true scores across the population is normally distributed with mean $\mu$ and variance $\sigma^2_{\theta}$.
+
+We can describe the distribution of each measurement as follows:
+
+$$
+\begin{aligned}
+\overbrace{y_{ij}}^{\text{measurement } j \text{ for subject } i} &= \overbrace{\theta_i}^{\text{subject } i \text{ true score}} + \overbrace{\epsilon_{ij}}^{\text{measurement error}} \\
+\epsilon_{ij} &\sim \text{Normal}(0, \overbrace{\sigma^2_{\epsilon}}^{\text{error variance}}) \\
+\overbrace{\theta_1,\theta_2,\dots,\theta_N}^{\text{population true scores}} &\sim \text{Normal}(\overbrace{\mu}^{\text{population mean true score}}, \overbrace{\sigma^2_{\theta}}^{\text{true score variance}})
+\end{aligned}
+$$
+
+### Calculating Reliability of Mean Scores
+
+Given that we know the distribution of each measurement, the distribution of a mean of multiple independent measurements is also Normal but with a smaller variance (note that as J increases, the variance decreases):
+
+$$
+\begin{aligned}
+\hat{y}_i &= \frac{1}{J}\sum_{j=1}^{J} y_{ij} \\
+&= \frac{1}{J}\sum_{j=1}^{J} (\theta_i + \epsilon_{ij}) \\
+&= \theta_i + \sum_{j=1}^{J} \frac{\epsilon_{ij}}{J}  \\
+&= \theta_i + \mathcal{E}_i   \\
+\mathcal{E}_i &=\frac{\epsilon_{i1} + \epsilon_{i2} + \dots + \epsilon_{iJ}}{J} \sim \text{Normal}(0,\frac{ \sigma^2_{\epsilon} }{J})
+\end{aligned}
+$$
+
+To work out the variance of the mean score for subject *i*, note that the variance of the sum of J independent normally distributed variables ($\epsilon_{i1} + \epsilon_{i2} + \dots + \epsilon_{iJ}$) is equal to $J\sigma^2_{\epsilon}$, and dividing by a constant J [divides the variance](https://en.wikipedia.org/wiki/Variance#Addition_and_multiplication_by_a_constant) by $J^2$.
+
+### Reliability Formula
+
+Reliability is the ratio of true score variance divided by the observed score variance:
+
+$$
+\begin{aligned}
+R(\hat{\mathbf{y}}) &= R(\mathbf{\theta}+\mathcal{E})\\
+&=\frac{Var(\mathbf{\theta})}{Var(\mathbf{\theta})+Var(\mathcal{E})} \\
+&= \frac{\sigma^2_{\theta}}{\sigma^2_{\theta}+\sigma^2_{\epsilon}/J}
+\end{aligned}
+$$
+
+This formula shows that reliability increases as we add more items (J increases), because the error variance gets divided by J.
