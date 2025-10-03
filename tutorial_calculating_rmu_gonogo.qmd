@@ -2,7 +2,7 @@
 title: "Tutorial: Calculating RMU reliability for a go/no-go task"
 author: "Giacomo Bignardi"
 date: "09/11/2025"
-date-modified: "09/11/2025"
+date-modified: "10/2/2025"
 cache: true
 freeze: true
 format: 
@@ -19,7 +19,7 @@ categories:
 
 # Introduction
 
-This is a brief walk-through of how to calculate reliability using the approach (relative measurement uncertainty; RMU) described in our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1/). 
+This is a brief walk-through of how to calculate reliability using the approach (relative measurement uncertainty; RMU) described in our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1). 
 
 In this example, we will calculate RMU reliability for the `d'` parameter estimated from a go/no-go task. We will also compare our results to other methods, including test-retest, split-half and empirical reliability. 
 
@@ -163,10 +163,12 @@ data_long_summarised = data_long %>%
 data_long_summarised %>%
   select(pps, session, condition_contrast, n, n_go) %>% 
   slice(1:10) %>%
-  knitr::kable(
-    caption = "First 10 lines of our cleaned data for analysis"
-  ) %>%
-  kableExtra::add_header_above(c("Unique Participant ID" = 1, "Testing Session" = 1, "Condition (contrast coded)" = 1, "Number of Trials" = 1, "Number of Go Responses in Condition" = 1))
+    knitr::kable(
+      caption = "First 10 lines of our cleaned data for analysis",
+      col.names = c("Unique Participant ID", "Testing Session",
+                    "Condition (contrast coded)", "Number of Trials",
+                    "Number of Go Responses in Condition")
+    )
 
 saveRDS(data_long_summarised, file = file.path("data","osf_hedge_cwzds","data_long_summarised.Rds"))
 ```
@@ -319,7 +321,7 @@ RMU estimates reliability using the posterior distributions for each subject's t
 
 To estimate RMU, we take pairs of draws from each subject's posterior and calculate the correlation between these draws to get a single "draw" of RMU reliability. We repeat this process many times to build up a posterior distribution for reliability, from which we can calculate point estimates and credible intervals. 
 
-![RMU reliability estimation process](plots/9_posteriors.png)
+![RMU reliability estimation process](tutorial_rmu_plot.png)
 
 One can think of RMU as a way of simulating reliability by drawing test-retest estimates from the posterior distributions. It is closely related to the [empirical reliability](#empirical-reliability) estimator, which estimates reliability by comparing the variance of the posterior means to the average posterior variance across all subjects. 
 
@@ -365,7 +367,7 @@ rmu_time2$hdci
 
 ```
 
-The analyses indicate that reliability at the first time point was `r round(rmu_time1$hdci$y*100)`% (95% Credible Interval = `r round(rmu_time1$hdci$ymin*100)`%-`r round(rmu_time1$hdci$ymax*100)`%), and at the second time point reliability was `r round(rmu_time2$hdci$y*100)`% (95% Credible Interval = `r round(rmu_time2$hdci$ymin*100)`%-`r round(rmu_time2$hdci$ymax*100)`%).
+The analyses indicate that reliability at the first time point was `r round(rmu_time1$hdci$rmu_estimate*100)`% (95% Credible Interval = `r round(rmu_time1$hdci$lowerbound*100)`%-`r round(rmu_time1$hdci$upperbound*100)`%), and at the second time point reliability was `r round(rmu_time2$hdci$rmu_estimate*100)`% (95% Credible Interval = `r round(rmu_time2$hdci$lowerbound*100)`%-`r round(rmu_time2$hdci$upperbound*100)`%).
 
 ## Test-Retest Reliability
 
@@ -524,8 +526,8 @@ empirical_reliability_t2 = variance_posterior_means_t2 / (variance_posterior_mea
 data.frame(
   Method = c("RMU Session 1", "RMU Session 2", "Empirical Session 1", "Empirical Session 2"),
   Reliability = c(
-    rmu_time1$hdci$y,
-    rmu_time2$hdci$y,
+    rmu_time1$hdci$rmu_estimate,
+    rmu_time2$hdci$rmu_estimate,
     empirical_reliability_t1,
     empirical_reliability_t2
   )
