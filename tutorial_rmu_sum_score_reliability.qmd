@@ -14,7 +14,7 @@ execute:
   message: false
 categories:
   - reliability
-  - cognition
+  - psychometrics
 ---
 
 # Introduction
@@ -77,9 +77,9 @@ cor(df_average_lengths$average_measurement, true_scores)^2
 
 It's worth noting that the Bayesian measurement model we employ in this example effectively makes the same assumptions as coefficient alpha - which if violated can lead to bias ([this paper](https://pubmed.ncbi.nlm.nih.gov/28557467/) covers the assumptions of alpha nicely).
 
-However, with RMU, we can make our model more complex (e.g., use an alternative outcome distribution, add parameters, etc.) to account for any quirks with our measurements. For example, for modelling reaction times, you may want to use [a more appropriate distribution](https://lindeloev.github.io/shiny-rt/). 
+However, with RMU, we can make our model more complex (e.g., use an alternative outcome distribution, add parameters, etc.) to account for any quirks with our measurements. For example, for modelling reaction times, you may want to use [a more appropriate distribution](https://lindeloev.github.io/shiny-rt/).
 
-We will keep our model simple in this example - but if you want to apply this code to real data - its worth considering whether the model assumptions are met! 
+We will keep our model simple in this example - but if you want to apply this code to real data - its worth considering whether the model assumptions are met!
 
 ## (1) Coefficient alpha
 
@@ -258,15 +258,15 @@ Given that we know the distribution of each measurement, the distribution of a m
 
 $$
 \begin{aligned}
-\hat{y}_i &= \frac{1}{J}\sum_{j=1}^{J} y_{ij} \\
-&= \frac{1}{J}\sum_{j=1}^{J} (\theta_i + \epsilon_{ij}) \\
-&= \theta_i + \sum_{j=1}^{J} \frac{\epsilon_{ij}}{J}  \\
+\hat{y}_i &= \frac{1}{\text{J}}\sum_{j=1}^{\text{J}} y_{ij} \\
+&= \frac{1}{\text{J}}\sum_{j=1}^{\text{J}} (\theta_i + \epsilon_{ij}) \\
+&= \theta_i + \sum_{j=1}^{\text{J}} \frac{\epsilon_{ij}}{\text{J}}  \\
 &= \theta_i + \mathcal{E}_i   \\
-\mathcal{E}_i &=\frac{\epsilon_{i1} + \epsilon_{i2} + \dots + \epsilon_{iJ}}{J} \sim \text{Normal}(0,\frac{ \sigma^2_{\epsilon} }{J})
+\mathcal{E}_i &=\frac{\epsilon_{i1} + \epsilon_{i2} + \dots + \epsilon_{i\text{J}}}{\text{J}} \sim \text{Normal}(0,\frac{ \sigma^2_{\epsilon} }{\text{J}})
 \end{aligned}
 $$
 
-To work out the variance of the mean score for subject *i*, note that the variance of the sum of J independent normally distributed variables ($\epsilon_{i1} + \epsilon_{i2} + \dots + \epsilon_{iJ}$) is equal to $J\sigma^2_{\epsilon}$, and dividing by a constant J [divides the variance](https://en.wikipedia.org/wiki/Variance#Addition_and_multiplication_by_a_constant) by $J^2$.
+To work out the variance of the mean score for subject *i*, note that the variance of the sum of J independent normally distributed variables ($\epsilon_{i1} + \epsilon_{i2} + \dots + \epsilon_{i\text{J}}$) is equal to $\text{J}\sigma^2_{\epsilon}$, and dividing by a constant J [divides the variance](https://en.wikipedia.org/wiki/Variance#Addition_and_multiplication_by_a_constant) by $\text{J}^2$.
 
 ### Reliability Formula
 
@@ -274,9 +274,9 @@ Reliability is the ratio of true score variance divided by the observed score va
 
 $$
 \begin{aligned}
-R(\hat{\mathbf{y}}) &= R(\mathbf{\theta}+\mathcal{E})\\
-&=\frac{Var(\mathbf{\theta})}{Var(\mathbf{\theta})+Var(\mathcal{E})} \\
-&= \frac{\sigma^2_{\theta}}{\sigma^2_{\theta}+\sigma^2_{\epsilon}/J}
+\text{R}(\hat{\mathbf{y}}) &= \text{R}(\mathbf{\theta}+\mathcal{E})\\
+&=\frac{\text{Var}(\mathbf{\theta})}{\text{Var}(\mathbf{\theta})+\text{Var}(\mathcal{E})} \\
+&= \frac{\sigma^2_{\theta}}{\sigma^2_{\theta}+\sigma^2_{\epsilon}/\text{J}}
 \end{aligned}
 $$
 
