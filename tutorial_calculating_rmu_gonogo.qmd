@@ -377,7 +377,9 @@ The test-retest reliability is a little lower than these estimates (r = `r round
 cor.test(subj_est_time_1, subj_est_time_2)
 ```
 
-If there were no changes in individuals' latent (true) `d'` values across time points, the population test-retest reliability and RMU should be identical. Because some change over time is inevitable, test-retest reliability will usually be a bit lower than reliability estimates derived from a single time point. Indeed, at the end of this post we calculate split-half reliability at each session, which is even slightly higher than our RMU estimates. 
+If there were no changes in individuals' latent (true) `d'` values across time points, the population test-retest reliability and RMU would be identical. Because some change over time is inevitable, test-retest reliability will usually be a bit lower than reliability estimates derived from a single time point. 
+
+Our estimate for split-half reliability (see below) is similar to RMU, because its not effected by change in participant's performance score over time. 
 
 ### Calculating a posterior for test-retest reliability
 
@@ -403,6 +405,27 @@ tidybayes::get_variables(test_retest_cor)
 test_retest_cor_posterior = test_retest_cor %>%
   tidybayes::spread_draws(rescor__subjesttime2__subjesttime1)
 
+
+```
+
+We can then visually compare test-retest reliability with our RMU estimates:
+
+
+```{r}
+
+bind_rows(
+  data.frame(par = "Test-Retest Posterior", val = test_retest_cor_posterior$rescor__subjesttime2__subjesttime1),
+  data.frame(par = "RMU Session 1", val = rmu_time1$reliability_posterior),
+  data.frame(par = "RMU Session 2", val = rmu_time2$reliability_posterior)
+) %>%
+  ggplot(aes(x = val, group = par, col = par, fill = par)) +
+  geom_density(alpha = .3) + 
+  theme_bw() + 
+  theme(
+    legend.position = c(.1, .9),
+    legend.justification = c(0, 1)
+  ) + 
+  labs(title = "Posterior distribution for reliability estimates")
 
 ```
 
@@ -539,30 +562,7 @@ data.frame(
 
 ```
 
-
-# Compare RMU and Test-Retest Reliability Posteriors
-
-We can visually compare our reliability posteriors derived from RMU using session 1 and 2 data, to the test-retest reliability estimate. 
-
-```{r}
-
-bind_rows(
-  data.frame(par = "Test-Retest Posterior", val = test_retest_cor_posterior$rescor__subjesttime2__subjesttime1),
-  data.frame(par = "RMU Session 1", val = rmu_time1$reliability_posterior),
-  data.frame(par = "RMU Session 2", val = rmu_time2$reliability_posterior)
-) %>%
-  ggplot(aes(x = val, group = par, col = par, fill = par)) +
-  geom_density(alpha = .3) + 
-  theme_bw() + 
-  theme(
-    legend.position = c(.1, .9),
-    legend.justification = c(0, 1)
-  ) + 
-  labs(title = "Posterior distribution for reliability estimates")
-
-```
-
-# Appendix A: Bayesian vs. Simple d' Estimates
+# Appendix: Bayesian vs. Simple d' Estimates
 
 If we just calculate `d'` using the transformed hit rate and false alarm rate, using the formula shown in @eq-dprime, does this give us estimates that are very different, or less reliable?
 
