@@ -2,7 +2,7 @@
 title: "Estimating Mean Score Reliability with RMU"
 author: "Giacomo Bignardi"
 date: "10/2/2025"
-date-modified: "10/2/2025"
+date-modified: "10/5/2025"
 cache: true
 freeze: true
 format: 
@@ -32,9 +32,11 @@ The final important parameter to consider is the variance in mouse true scores a
 To illustrate, let's simulate some data:
 
 ```{r}
+library(ggdist)
 library(brms)
-library(tidyverse)
+library(cmdstanr)
 library(psych)
+library(tidyverse)
 
 rm(list=ls())
 set.seed(1)
@@ -162,7 +164,27 @@ $$
 
 ### Calculate RMU
 
-To calculate RMU, extract the posterior draws for each mouse's random intercept parameter, and plug the matrix of draws into the reliability function:
+To calculate RMU, extract the posterior draws for each mouse's random intercept parameter, and plug the matrix of draws into my reliability function. 
+
+You can either install my R package `gbtoolbox` from github, or you can just load the reliability function directly from github. Both methods are outlined below:
+
+Install R package from github:
+
+```{r}
+#| eval: false
+
+devtools::install_github("giac01/gbtoolbox")
+
+```
+
+Or, you can just load the R function using the following code (but make sure you also have the R package ggdist installed):
+
+```{r}
+#| eval: false
+
+source("https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/reliability.R")
+
+```
 
 ```{r}
 
@@ -220,7 +242,7 @@ brms_model = brm(
   data    = df, 
   chains  = 2, 
   cores   = 2,
-  refresh = 0,
+  refresh = 0,           # This hides the progress bar 
   backend = "cmdstanr",  # This is to speed up model fitting using parallelization
   threads = threading(4) # This is to speed up model fitting using parallelization
   )
