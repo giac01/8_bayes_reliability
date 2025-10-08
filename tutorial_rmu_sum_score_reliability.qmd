@@ -2,7 +2,7 @@
 title: "Estimating Mean Score Reliability with RMU"
 author: "Giacomo Bignardi"
 date: "10/2/2025"
-date-modified: "10/5/2025"
+date-modified: "10/8/2025"
 cache: true
 freeze: true
 format: 
@@ -20,6 +20,8 @@ categories:
 # Introduction
 
 This tutorial demonstrates how to use Relative Measurement Uncertainty (RMU) to estimate mean score reliability. See our [pre-print](https://osf.io/h54k8) for more information on RMU.
+
+This brief tutorial assumes your relatively familiar with multilevel Bayesian modelling and logistic regression. 
 
 # Set Up
 
@@ -207,6 +209,8 @@ Remember to check that the matrix of draws has subjects on the rows and draws on
 Just to check this wasn't a fluke, we can play around with the parameters J and true_score_variance and error_variance below to show that we get the correct result across different simulation conditions:
 
 ```{r}
+#| output: false
+
 rm(list=ls())
 set.seed(1)
 N                   = 5000 # number of subjects (mice)
@@ -255,6 +259,163 @@ posterior_draws = brms_model %>%
 gbtoolbox::reliability(posterior_draws)$hdci
 
 ```
+
+For the above example, RMU is pretty similar to the expected value:
+
+```{r}
+
+cat("Simulation reliability = ")
+
+true_score_variance/(true_score_variance+error_variance/J)
+
+cat("Squared Correlation between mean and true scores  = ")
+# This may slightly differ to above due to sampling variance
+
+cor(df_average_lengths$average_measurement, true_scores)^2
+
+cat("RMU:")
+
+gbtoolbox::reliability(posterior_draws)$hdci
+
+
+```
+
+
+# Beyond coefficient alpha
+
+We can leverage the flexibility of brms + RMU to estimate reliability in more complex scenarios.
+
+In this next example, we'll simulate binary outcome data (1 = success, 0 = fail) where:
+
+- Each subject completes between 3-9 trials (varying number of measurements per subject)
+- Subjects improve with practice (probability of success increases on each subsequent trial)
+- We're interested in individual differences in first-trial performance
+
+Because subjects completed different numbers of trials, simply averaging their scores would be misleading - those who completed more trials had more opportunities to practice and improve.
+
+Instead, we'll use a multilevel logistic regression model to estimate each subject's probability of success on the first trial. We'll include trial number as fixed covariate in the model. We'll code trial number (j) starting at 0 for the first trial, so the random intercept directly represents each subject's first-trial performance (on the logit scale).
+
+```{r}
+#| output: false
+
+rm(list=ls())
+set.seed(1)
+N                   = 5000 # number of subjects (mice)
+J                   = sample(3:9, size = N, replace = TRUE)    # number of measurements per subject
+true_score_variance = 1
+error_variance      = 2
+
+df = expand.grid(j = 1:10, mouse = 1:N)
+
+for(i in 1:N){
+  df = df %>%
+    filter(!(mouse == i & j > J[i]))
+}
+
+prob_success_first_trial = rbeta(N,3,3)  # probability of success on first trial
+
+df$prob_success_first_trial = prob_success_first_trial[df$mouse] %>% qlogis()
+
+df$y = rbinom(nrow(df), size = 1, prob = plogis(df$prob_success_first_trial + .1*df$j))
+
+df$j = df$j - 1
+
+brms_model_logistic = brm(
+  y ~ 1 + j + (1 | mouse),
+  data    = df,
+  family  = bernoulli(link = "logit"),
+  chains  = 4,
+  cores   = 4,
+  backend = "cmdstanr",
+  threads = threading(2)
+)
+
+
+```
+
+Our data structure looks like this:
+
+```{r}
+
+df %>% 
+  select(-prob_success_first_trial) %>%
+  slice(1:10)
+
+```
+
+Fitted brms model summary: 
+
+```{r}
+
+summary(brms_model_logistic)
+
+```
+
+We visualise the posterior distribution for each subject's random intercept below. 
+
+By transforming the random intercept with the inverse logit function we can look at our posterior on the probability scale too - these values tell us the estimated probability of success on the first trial for each subject.  
+
+
+```{r}
+posterior_draws = brms_model_logistic %>%
+  as_draws_df() %>%
+  select(starts_with("r_mouse")) %>%
+  t()
+
+posterior_draws %>%
+  t() %>% # make sure participant is on the COLUMN for pivot_wider!
+  data.frame() %>%
+  `colnames<-`(1:ncol(.)) %>%
+  pivot_longer(cols = everything()) %>%
+  filter(as.numeric(name) < 201) %>%
+  ggplot(aes(x = value, group = name)) +
+  geom_density(fill = NA, color = ggplot2::alpha("black", .5)) +
+  theme_bw() +
+  guides(color = "none") +
+  labs(
+    subtitle = "Random Intercept Posterior Distributions for each subject \nLogit scale, first 200 subjects only"
+  )
+
+posterior_draws %>%
+  t() %>% # make sure participant is on the COLUMN for pivot_wider!
+  data.frame() %>%
+  `colnames<-`(1:ncol(.)) %>%
+  pivot_longer(cols = everything()) %>%
+  filter(as.numeric(name) < 201) %>%
+  mutate(value = plogis(value)) %>%
+  ggplot(aes(x = value, group = name)) +
+  geom_density(fill = NA, color = ggplot2::alpha("black", .5)) +
+  theme_bw() +
+  labs(
+    subtitle = "Random Intercept Posterior Distributions for each subject \nProbability scale, first 200 subjects only"
+  )
+
+
+```
+
+To find the "true" reliability, we can calculate the squared correlation between the estimated probabilities of success for each subject (using posterior means for the random intercepts) and the known probabilities of success. 
+
+Rather than working directly with the probabilities, we will calculate the correlation on the logit scale.
+
+```{r}
+
+
+posterior_means = rowMeans(posterior_draws)
+
+cor(posterior_means,prob_success_first_trial)^2
+
+```
+
+
+```{r}
+
+gbtoolbox::reliability(posterior_draws)$hdci
+
+```
+
+Our RMU estimate of reliability closely matches the squared correlation between estimated and true scores - which is reassuring!
+
+A more robust approach to find the "true" reliability would be to simulate data from two time points for each participant - and show that the correlation between estimates from each time point is equivalent to RMU. In the case that each subject's *expected* score corresponds to `prob_success_first_trial`, then either approach will yield the same result, however this is not always the case.  
 
 # Appendix: Deriving The Mean Score Reliability Formula {#sec-appendix}
 
