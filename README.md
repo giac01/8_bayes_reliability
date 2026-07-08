@@ -30,9 +30,43 @@ This project runs in the Docker container **`bignardig/tidyverse461:v1`**, based
 
 ## Structure
 
-- `1_setup.R` — loads packages and helper functions
-- `2_*`, `3_*`, `4_*`, `5_*` — simulation and analysis scripts for each study
-- `helper_functions/` — shared R functions
+- `1_setup.R` — loads packages and sources all helper functions in `helper_functions/`
+- `2_*`, `3_*`, `4_*`, `5_*` — simulation and analysis scripts for each study (see below)
+- `helper_functions/` — shared R functions (simulation, model-fitting, and reliability-estimation helpers)
 - `stan_models/` — Stan model files
 - `data/` — study data (not tracked in git)
 - `results/`, `results_tables/` — simulation outputs
+
+There are three studies, each simulating data from a different measurement model, fitting it with Stan/brms, and computing RMU reliability alongside classical benchmarks (coefficient alpha, coefficient H, split-half). Each study has a `_0_slurm` job script (submits the simulation to an HPC cluster), a `_1_simulate.R` script (runs the simulation for one seed/job), and a `_2_analysis.R` script (collates and summarises results across jobs).
+
+### Study 1 — Linear factor model (`2_study1_*`)
+
+Simulates single-factor data across a range of sample sizes and loading patterns, fits the Bayesian factor model in Stan, and compares RMU reliability against coefficient alpha, coefficient H, and split-half reliability.
+
+- `2_study1_0_slurm`, `2_study1_0_slurm_himem` — HPC job submission scripts
+- `2_study1_1_simulate.R` — for each combination of sample size and loading set, simulates data and fits `stan_models/stan_inequiv_factor_model_v14.stan`
+- `2_study1_2_analysis.R` — reads in and summarises the simulation output (bias, RMSE, coverage) across conditions
+
+Simulation functions used: **`sim_factor_stnd`** (generates standardised-loading factor data), **`run_factor_sim_2`** (orchestrates simulation + Stan fit + reliability estimation for one condition, internally calling `coef_h` for coefficient H and `calc_r_stan_m3` for the RMU correlation from posterior draws)
+
+### Study 2 — Signal detection (SDT) model (`3_study2_*`)
+
+Simulates binomial hit/false-alarm data from a signal-detection model across sample sizes, number of items/trials, and between-subject variability in sensitivity, then fits the model with `brms`.
+
+- `3_study2_0_slurm` — HPC job submission script
+- `3_study2_1_simulate.R` — for each parameter combination, simulates SDT data and fits the binomial probit model via `brms`/`cmdstanr`
+- `3_study2_2_analysis.R` — collates results and compares them against population reliability estimates
+
+Simulation functions used: **`sim_sdt_binomial`** (generates per-subject hit/false-alarm counts from sensitivity and criterion parameters), **`run_sdt_sim`** (orchestrates simulation + brms fit + reliability estimation, internally calling `calc_r_brms_sdt` for the RMU correlation from posterior draws)
+
+### Study 3 — Reinforcement-learning (two-armed bandit) model (`4_study3_*`, `5_study3b_*`)
+
+Simulates choice/outcome sequences from a Rescorla-Wagner-style reinforcement-learning model across sample sizes, trial counts, and between-subject variability in learning rate, then fits `stan_models/stan_two_arm_bandit_v6.stan`.
+
+- `4_study3_0_slurm`, `4_study3_0_slurm_himem`, `4_study3_0_slurm_largesamplesize_himem2` — HPC job submission scripts (including a large-sample-size variant)
+- `4_study3_1_simulate.R` — main simulation across sample sizes/trial counts/learning-rate variability, using full MCMC
+- `4_study3_1_largesamplesize_simulate.R` — same design at a larger sample size (n = 2000), for supplementary/robustness checks
+- `4_study3_2_analysis.R` — collates and summarises results across jobs
+- `5_study3b_1_simulate.R` and its `_0_slurm_himem` variants — a variational-inference version of the same design (for larger sample sizes where full MCMC is too slow)
+
+Simulation functions used: **`sim_ri`** (simulates trial-by-trial choices/outcomes from learning rate, decision noise, and reward probabilities, using **`g_normaluniform`** to draw individual differences in learning rate/decision noise and **`g_softmax`** to convert beliefs into choice probabilities), **`run_ri_sim`** (orchestrates simulation + full-MCMC Stan fit + reliability estimation for Study 3), **`run_ri_sim_variational`** (same, but fits via Stan's variational inference, used in Study 3b)

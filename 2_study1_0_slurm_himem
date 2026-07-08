@@ -62,7 +62,7 @@ export RUN_REP="1000"
 export SEED_ENV="3"
 
 #! Full path to application executable: 
-application="singularity exec 6_ptsd_v4.sif Rscript 2_study1_sim.R"
+application="singularity exec 6_ptsd_v4.sif Rscript 2_study1_1_simulate.R"
 
 #! Run options for the application:
 options=""

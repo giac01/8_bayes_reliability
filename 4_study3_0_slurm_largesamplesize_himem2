@@ -63,7 +63,7 @@ export RUN_REP="1"
 export SEED_ENV=$((3000 + SLURM_ARRAY_TASK_ID))
 
 #! Full path to application executable: 
-application="singularity exec 6_ptsd_v4.sif Rscript 4_study3_1_largesamplesize_sim.R"
+application="singularity exec 6_ptsd_v4.sif Rscript 4_study3_1_largesamplesize_simulate.R"
 
 #! Run options for the application:
 options=""

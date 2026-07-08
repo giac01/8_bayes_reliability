@@ -6,7 +6,7 @@ run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))                     
 seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))                    # Random Number Seed
 
 # Compile stan model -----------------------------------------------------------
-cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1") # THIS NEEDS UPDATNG
+cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1") # THIS NEEDS UPDATNG TO LOCATION OF CMDSTAN INSTALL ON HPC CLUSTER
 
 mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v14.stan"))
 
