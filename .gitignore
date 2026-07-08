@@ -5,7 +5,6 @@
 *.Ruserdata
 *99*
 data/*
-plots/*
 *.rda
 *.rds
 *.Rdata
@@ -22,3 +21,4 @@ machine.file*
 *_cache/
 *_files/
 .quarto/
+.positai

@@ -27,7 +27,7 @@ loadings_list_pretty2
 
 # I ran the simulation code multiple times on the cluster, so we have several results files we want to join
 
-results_path = file.path("results","study1b_results")
+results_path = file.path("results","study1_results")
 results_files = list.files(results_path, 
                            pattern = ".rds",
                            # pattern = "^4_results_tauinequiv_seed",
@@ -650,8 +650,8 @@ results_table_long  %>%
     # legend.margin = margin(6, 6, 6, 6)
   )
   
-ggsave(file.path("plots","2_study1b_violinplot.pdf"), width = 6.2, height = 7)
-# ggsave(file.path("plots","2_study1b_violinplot.png"), width = 6.2, height = 7)
+ggsave(file.path("plots","2_study1_violinplot.pdf"), width = 6.2, height = 7)
+# ggsave(file.path("plots","2_study1_violinplot.png"), width = 6.2, height = 7)
 
 colnames(results_table_long)
 
@@ -704,7 +704,7 @@ results_table_long %>%
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 
-ggsave(file.path("plots","2_study1b_violinplot_allestimators.pdf"), width = 6.2, height = 7)
+ggsave(file.path("plots","2_study1_violinplot_allestimators.pdf"), width = 6.2, height = 7)
 
 
 ## Credible Intervals ------------------------------------------------------

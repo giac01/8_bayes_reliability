@@ -1,21 +1,11 @@
 # Load Stuff -------------------------------------------------------------------
-rm(list=ls(all.names = T))
-gc()
-library(brms)
-library(tidyverse)
-library(future)
-library(future.apply)
-library(cmdstanr)
+source("1_setup.R")
 
-
-run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))
-seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))
+# Sys.setenv(RUN_REP = 2, SEED_ENV = 1)                                         # NB: this code is designed to be run in a HPC environment, where the values of these environment variables are set in the slurm job scripts. For testing locally, it can be set here
+run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))                     # Number of times to repeat the simulation
+seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))                    # Random Number Seed
 
 cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
-# Source all simulation functions 
-# List all .R files in the folder
-list.files(file.path("helper_functions"), pattern = "\\.R$", full.names = TRUE) %>%
-  lapply(function(x) source(x))
 
 # Compile stan model -----------------------------------------------------------
 

@@ -1,23 +1,12 @@
 # Load Stuff -------------------------------------------------------------------
-rm(list=ls(all.names = T))
-gc()
+source("1_setup.R")
 
-library(brms)
-library(tidyverse)
-library(future)
-library(future.apply)
-library(cmdstanr)
-
-run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))
-seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))
-
-# Source all simulation functions 
-# List all .R files in the folder
-list.files(file.path("helper_functions"), pattern = "\\.R$", full.names = TRUE) %>%
-  lapply(., function(x) {source(x)})
+# Sys.setenv(RUN_REP = 2, SEED_ENV = 1)                                         # NB: this code is designed to be run in a HPC environment, where the values of these environment variables are set in the slurm job scripts. For testing locally, it can be set here
+run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))                     # Number of times to repeat the simulation
+seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))                    # Random Number Seed
 
 # Compile stan model -----------------------------------------------------------
-cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
+cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1") # THIS NEEDS UPDATNG
 
 mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v14.stan"))
 
@@ -44,6 +33,7 @@ loadings_list = list(
 )
 
 # Reliabilities 
+# Note that because the loadings aren't known exactly, any sampling error in estimating the loadings will influence the reliability of the IRT scores
 
 lapply(loadings_list, rel_function)
 
@@ -81,7 +71,7 @@ time_b - time_a
 future::plan(future::sequential())
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
-filename <- paste0("2_study1b_seed", seed_env ,"_",timestamp,".rds")
+filename <- paste0("2_study1_seed", seed_env ,"_",timestamp,".rds")
 saveRDS(results, file = file.path("results", filename))
 
 
