@@ -65,11 +65,11 @@ for (i in seq_along(data_files)){
 
 data_long = do.call("bind_rows", data_list)
 
-data_long = data_long %>%
+data_long = data_long |>
   arrange(pps, session)
 
-data_long %>%
-  slice(1:15) %>%
+data_long |>
+  slice(1:15) |>
   knitr::kable(
     caption = "This is what our data looks like"
   )
@@ -90,16 +90,16 @@ data <- data.frame(
 )
 
 # Create the gt table
-table <- gt(data) %>%
+table <- gt(data) |>
   tab_spanner(
     label = "Response",
     columns = c(Go, NoGo)
-  ) %>%
+  ) |>
   cols_label(
     Stimulus_Class = "Condition",
     Go = "Go",
     NoGo = "No-Go"
-  ) %>%
+  ) |>
   tab_style(
     style = cell_borders(sides = "all"),
     locations = cells_body()
@@ -137,32 +137,32 @@ The beta coefficient for condition_contrast approximately corresponds to the cha
 
 ```{r}
 
-data_long_summarised = data_long %>%
-  group_by(pps, session, condition) %>%
+data_long_summarised = data_long |>
+  group_by(pps, session, condition) |>
   summarise(
     n         = n(),
     n_correct = sum(correct),
     .groups = 'drop'
-  ) %>%
-  ungroup() %>%
+  ) |>
+  ungroup() |>
   mutate(
     n_go = ifelse(condition == 0, n_correct, n - n_correct),
     condition_contrast = dplyr::case_when(
       condition == 0 ~ .5,
       condition == 2 ~ -.5
     )
-  ) %>%
-  ungroup() %>%
+  ) |>
+  ungroup() |>
   mutate(
       n_go = ifelse(n_go == n, n_go - 1, n_go),
       n_go = ifelse(n_go == 0, 1, n_go)
-  ) %>%
+  ) |>
   arrange(pps)
 
 
-data_long_summarised %>%
-  select(pps, session, condition_contrast, n, n_go) %>% 
-  slice(1:10) %>%
+data_long_summarised |>
+  select(pps, session, condition_contrast, n, n_go) |> 
+  slice(1:10) |>
     knitr::kable(
       caption = "First 10 lines of our cleaned data for analysis",
       col.names = c("Unique Participant ID", "Testing Session",
@@ -214,13 +214,13 @@ model_time_2 = brms::brm(
 
 # Time Session 1 
 # Participant random effects of condition
-subj_draws_time_1 = as_draws_df(model_time_1) %>%
-                    select(ends_with("condition_contrast]")) %>%
+subj_draws_time_1 = as_draws_df(model_time_1) |>
+                    select(ends_with("condition_contrast]")) |>
                     t() 
 
 # Main effect of condition
-cond_main_effect_1 = as_draws_df(model_time_1) %>%
-                     pull(b_condition_contrast) %>% 
+cond_main_effect_1 = as_draws_df(model_time_1) |>
+                     pull(b_condition_contrast) |> 
                      as.numeric()
 
 # Add main effect of condition to random effects 
@@ -229,13 +229,13 @@ subj_draws_time_1 = subj_draws_time_1 + cond_main_effect_1
 
 # Time / Session 2
 # Participant random effects of condition
-subj_draws_time_2 = as_draws_df(model_time_2) %>%
-                    select(ends_with("condition_contrast]")) %>%
+subj_draws_time_2 = as_draws_df(model_time_2) |>
+                    select(ends_with("condition_contrast]")) |>
                     t() 
 
 # Main effect of condition
-cond_main_effect_2 = as_draws_df(model_time_2) %>%
-                     pull(b_condition_contrast) %>% 
+cond_main_effect_2 = as_draws_df(model_time_2) |>
+                     pull(b_condition_contrast) |> 
                      as.numeric()
 
 # Add main effect of condition to random effects 
@@ -274,9 +274,9 @@ Point estimates of `d'` for each participant could be estimated using the matrix
 
 ```{r}
 
-subj_draws_time_1 %>%
-  data.frame() %>%
-  slice(1:10) %>%
+subj_draws_time_1 |>
+  data.frame() |>
+  slice(1:10) |>
   select(1:4)
 
 nrow(subj_draws_time_1)
@@ -287,18 +287,18 @@ ncol(subj_draws_time_2)
 To visualize our uncertainty about each subject's true d' value, we can plot the posterior distribution for each subject's `d'` value.
 
 ```{r}
-subj_draws_time_1 %>%
-  data.frame() %>%
-  rowid_to_column(var = "pps") %>%
-  pivot_longer(cols = !matches("pps")) %>%
+subj_draws_time_1 |>
+  data.frame() |>
+  rowid_to_column(var = "pps") |>
+  pivot_longer(cols = !matches("pps")) |>
   ggplot(aes(x = value, group = pps)) +
   geom_density(alpha = .2, fill = "light blue") +
   labs(title = "Session 1: Posterior Distribution for each subject's Go/No-Go d' (sensitivity)")
 
-subj_draws_time_2 %>%
-  data.frame() %>%
-  rowid_to_column(var = "pps") %>%
-  pivot_longer(cols = !matches("pps")) %>%
+subj_draws_time_2 |>
+  data.frame() |>
+  rowid_to_column(var = "pps") |>
+  pivot_longer(cols = !matches("pps")) |>
   ggplot(aes(x = value, group = pps)) +
   geom_density(alpha = .2, fill = "light blue") +
   labs(title = "Session 2: Posterior Distribution for each subject's Go/No-Go d' (sensitivity)")
@@ -336,9 +336,7 @@ You can either install my R package of miscellaneous R functions `gbtoolbox` ava
 Install R package from github:
 
 ```{r}
-#| output: false
-#| message: false
-#| warning: false
+#| eval: false
 
 devtools::install_github("giac01/gbtoolbox")
 
@@ -347,6 +345,7 @@ devtools::install_github("giac01/gbtoolbox")
 Or, you can just load the R function using:
 
 ```{r}
+#| eval: false
 
 source("https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/reliability.R")
 
@@ -360,11 +359,19 @@ Calculate RMU reliability at each time point:
 rmu_time1 = reliability(subj_draws_time_1)
 rmu_time2 = reliability(subj_draws_time_2)
 
-rmu_time1$hdci
-rmu_time2$hdci
+```
+
+RMU estimated using Time 1 data:
 
 
+```{r}
+print(rmu_time1)
+```
 
+RMU estimated using Time 2 data:
+
+```{r}
+print(rmu_time2)
 ```
 
 The analyses indicate that reliability at the first time point was `r round(rmu_time1$hdci$rmu_estimate*100)`% (95% Credible Interval = `r round(rmu_time1$hdci$hdci_lowerbound*100)`%-`r round(rmu_time1$hdci$hdci_upperbound*100)`%), and at the second time point reliability was `r round(rmu_time2$hdci$rmu_estimate*100)`% (95% Credible Interval = `r round(rmu_time2$hdci$hdci_lowerbound*100)`%-`r round(rmu_time2$hdci$hdci_upperbound*100)`%).
@@ -390,11 +397,11 @@ While `cor.test` gives us a confidence interval, if we want a posterior distribu
 #| warning: false
 #| results: 'hide'
 
-test_retest_cor = data.frame(subj_est_time_1, subj_est_time_2) %>%
+test_retest_cor = data.frame(subj_est_time_1, subj_est_time_2) |>
   brms::brm(
        bf(mvbind(subj_est_time_2,subj_est_time_1 ) ~ 1,
          sigma ~ 1) + set_rescor(TRUE),
-       data = .,
+       data = _,
        chains = 6,
        cores = 6,
        control = list(adapt_delta = .95)
@@ -402,7 +409,7 @@ test_retest_cor = data.frame(subj_est_time_1, subj_est_time_2) %>%
   
 tidybayes::get_variables(test_retest_cor)
 
-test_retest_cor_posterior = test_retest_cor %>%
+test_retest_cor_posterior = test_retest_cor |>
   tidybayes::spread_draws(rescor__subjesttime2__subjesttime1)
 
 
@@ -417,7 +424,7 @@ bind_rows(
   data.frame(par = "Test-Retest Posterior", val = test_retest_cor_posterior$rescor__subjesttime2__subjesttime1),
   data.frame(par = "RMU Session 1", val = rmu_time1$reliability_posterior),
   data.frame(par = "RMU Session 2", val = rmu_time2$reliability_posterior)
-) %>%
+) |>
   ggplot(aes(x = val, group = par, col = par, fill = par)) +
   geom_density(alpha = .3) + 
   theme_bw() + 
@@ -441,31 +448,31 @@ The results are quite similar, though the split-half estimates are slightly high
 
 ```{r}
 
-data_long_odd = data_long %>%
-  filter(trial %% 2 == 1) %>%
-  group_by(pps, session, condition) %>%
+data_long_odd = data_long |>
+  filter(trial %% 2 == 1) |>
+  group_by(pps, session, condition) |>
     summarise(
       n         = n(),
       n_correct = sum(correct)
-    ) %>%
-    ungroup() %>%
+    ) |>
+    ungroup() |>
     mutate(
       n_go = ifelse(condition == 0, n_correct, n - n_correct)
-    ) %>%
-    ungroup() %>%
+    ) |>
+    ungroup() |>
     mutate(
       n_go = ifelse(n_go == n, n_go - 1, n_go),
       n_go = ifelse(n_go == 0, 1, n_go)
-    ) %>%
-    arrange(pps) %>%
-    ungroup() %>%
-    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) %>%
+    ) |>
+    arrange(pps) |>
+    ungroup() |>
+    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) |>
     pivot_wider(
       id_cols = pps,
       names_from = c(condition, session),
       values_from = c(n, n_go),
       names_glue = "{condition}_t{session}_{.value}"
-    ) %>%
+    ) |>
     mutate(
       hit_rate_t1        = go_t1_n_go / go_t1_n,
       falsealarm_rate_t1 = nogo_t1_n_go / nogo_t1_n,
@@ -475,31 +482,31 @@ data_long_odd = data_long %>%
       d_prime_t2         = qnorm(hit_rate_t2) - qnorm(falsealarm_rate_t2)
     )
 
-data_long_even = data_long %>%
-  filter(trial %% 2 == 0) %>%
-  group_by(pps, session, condition) %>%
+data_long_even = data_long |>
+  filter(trial %% 2 == 0) |>
+  group_by(pps, session, condition) |>
     summarise(
       n         = n(),
       n_correct = sum(correct)
-    ) %>%
-    ungroup() %>%
+    ) |>
+    ungroup() |>
     mutate(
       n_go = ifelse(condition == 0, n_correct, n - n_correct)
-    ) %>%
-    ungroup() %>%
+    ) |>
+    ungroup() |>
     mutate(
       n_go = ifelse(n_go == n, n_go - 1, n_go),
       n_go = ifelse(n_go == 0, 1, n_go)
-    ) %>%
-    arrange(pps) %>%
-    ungroup() %>%
-    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) %>%
+    ) |>
+    arrange(pps) |>
+    ungroup() |>
+    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) |>
     pivot_wider(
       id_cols = pps,
       names_from = c(condition, session),
       values_from = c(n, n_go),
       names_glue = "{condition}_t{session}_{.value}"
-    ) %>%
+    ) |>
     mutate(
       hit_rate_t1        = go_t1_n_go / go_t1_n,
       falsealarm_rate_t1 = nogo_t1_n_go / nogo_t1_n,
@@ -519,7 +526,7 @@ data.frame(
     split_half_cor_t2,
     (2*split_half_cor_t1)/(1+split_half_cor_t1),
     (2*split_half_cor_t2)/(1+split_half_cor_t2))
-) %>% 
+) |> 
   knitr::kable(
     digits = 4, 
     caption = "Split-Half Correlations and Spearman-Brown Corrected Split-Half Reliabilities"
@@ -554,7 +561,7 @@ data.frame(
     empirical_reliability_t1,
     empirical_reliability_t2
   )
-) %>% 
+) |> 
   knitr::kable(
     digits = 4, 
     caption = "Comparison of RMU and Empirical Reliability Point Estimates"
@@ -571,22 +578,22 @@ The answer in this case seems to be no, the estimates are very similar regardles
 ```{r}
 
 two_stage_estimate = 
- data_long_summarised %>%
-  select(-condition_contrast) %>%
-  mutate(condition = factor(ifelse(condition==0,"go","nogo"))) %>%
+ data_long_summarised |>
+  select(-condition_contrast) |>
+  mutate(condition = factor(ifelse(condition==0,"go","nogo"))) |>
   # correct perfect scores
-  rowwise() %>%
+  rowwise() |>
   # mutate(
   #   n_go = ifelse(n_go ==450 & condition=="go",   449.5, n_go),
   #   n_go = ifelse(n_go ==0,                       .5   , n_go),
   #   n_go = ifelse(n_go ==150 & condition=="nogo", 149.5, n_go)
-  # ) %>%
+  # ) |>
   pivot_wider(
     id_cols = pps,
     names_from = c(condition, session),
     values_from = c(n, n_go),
     names_glue = "{condition}_t{session}_{.value}"
-              ) %>%
+              ) |>
   mutate(
     hit_rate_t1        = go_t1_n_go/(go_t1_n),
     falsealarm_rate_t1 = nogo_t1_n_go/nogo_t1_n,
@@ -603,7 +610,7 @@ data_plot = data.frame(
   `Bayes d' T2` = subj_est_time_2
 )
 
-data_plot %>%
+data_plot |>
   ggplot(aes(x = Simple.d..T1, Bayes.d..T1)) + 
   geom_abline(slope = 1, intercept = 0) +
   geom_point() + 
@@ -618,7 +625,7 @@ data_plot %>%
     subtitle = "Simple estimates = qnorm(hit rate) - qnorm(false alarm rate)"
   )
 
-data_plot %>%
+data_plot |>
   ggplot(aes(x = Simple.d..T2, Bayes.d..T2)) + 
   geom_abline(slope = 1, intercept = 0) +
   geom_point() + 
@@ -648,15 +655,15 @@ This doesn't mean that the regression approach to calculating `d'` is pointless.
 # Resampling approach
 
 calc_dprime <- function(df) {
-  processed_df <- df %>%
-    select(-condition_contrast) %>%
-    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) %>%
+  processed_df <- df |>
+    select(-condition_contrast) |>
+    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) |>
     pivot_wider(
       id_cols = pps,
       names_from = c(condition, session),
       values_from = c(n, n_go),
       names_glue = "{condition}_t{session}_{.value}"
-    ) %>%
+    ) |>
     mutate(
       hit_rate_t1        = go_t1_n_go / go_t1_n,
       falsealarm_rate_t1 = nogo_t1_n_go / nogo_t1_n,
@@ -672,27 +679,27 @@ calc_dprime <- function(df) {
 }
 
 summarise_data = function(df){
-  df  = df %>%
-    group_by(pps, session, condition) %>%
+  df  = df |>
+    group_by(pps, session, condition) |>
     summarise(
       n         = n(),
       n_correct = sum(correct)
-    ) %>%
-    ungroup() %>%
+    ) |>
+    ungroup() |>
     mutate(
       n_go = ifelse(condition == 0, n_correct, n - n_correct),
       condition_contrast = dplyr::case_when(
         condition == 0 ~ .5,
         condition == 2 ~ -.5
       )
-    ) %>%
-    ungroup() %>%
+    ) |>
+    ungroup() |>
     mutate(
       n_go = ifelse(n_go ==450 & condition==0, 449, n_go),
       n_go = ifelse(n_go == 0, 1, n_go),
       n_go = ifelse(n_go ==150 & condition==2, 149, n_go)
-    ) %>%
-    arrange(pps) %>%
+    ) |>
+    arrange(pps) |>
     ungroup()
   
   return(df)
@@ -703,27 +710,27 @@ session2_splithalf = vector()
 
 for (i in 1:100){
   
-  data_long_resampled_half1 = data_long  %>%
-    group_by(pps, session, condition) %>%
-    group_modify(~ .x %>% slice_sample(n = nrow(.x), replace = TRUE)) %>%
-    bind_rows() %>%
+  data_long_resampled_half1 = data_long  |>
+    group_by(pps, session, condition) |>
+    group_modify(~ .x |> slice_sample(n = nrow(.x), replace = TRUE)) |>
+    bind_rows() |>
     ungroup()
   
-  data_long_resampled_half2 = data_long  %>%
-    group_by(pps, session, condition) %>%
-    group_modify(~ .x %>% slice_sample(n = nrow(.x), replace = TRUE)) %>%
-    bind_rows() %>%
-    ungroup() %>% 
+  data_long_resampled_half2 = data_long  |>
+    group_by(pps, session, condition) |>
+    group_modify(~ .x |> slice_sample(n = nrow(.x), replace = TRUE)) |>
+    bind_rows() |>
+    ungroup() |> 
     mutate(half = 2)
   
-  data_long_resampled_half1 = data_long_resampled_half1 %>%
-    summarise_data() %>%
-    calc_dprime() %>%
+  data_long_resampled_half1 = data_long_resampled_half1 |>
+    summarise_data() |>
+    calc_dprime() |>
     mutate(half = 1)
 
-  data_long_resampled_half2 = data_long_resampled_half2 %>%
-    summarise_data() %>%
-    calc_dprime() %>%
+  data_long_resampled_half2 = data_long_resampled_half2 |>
+    summarise_data() |>
+    calc_dprime() |>
     mutate(half = 2)
   
   session1_splithalf[i] = cor(data_long_resampled_half1$d_prime_t1, 
@@ -744,14 +751,14 @@ library(tidyr)
 
 # Define the functions
 calc_dprime <- function(df) {
-  df %>%
-    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) %>%
+  df |>
+    mutate(condition = factor(ifelse(condition == 0, "go", "nogo"))) |>
     pivot_wider(
       id_cols = pps,
       names_from = c(condition, session),
       values_from = c(n, n_go),
       names_glue = "{condition}_t{session}_{.value}"
-    ) %>%
+    ) |>
     mutate(
       hit_rate_t1        = go_t1_n_go / go_t1_n,
       falsealarm_rate_t1 = nogo_t1_n_go / nogo_t1_n,
@@ -763,20 +770,20 @@ calc_dprime <- function(df) {
 }
 
 summarise_data <- function(df) {
-  df %>%
-    group_by(pps, session, condition) %>%
+  df |>
+    group_by(pps, session, condition) |>
     summarise(
       n = n(),
       n_correct = sum(correct),
       .groups = "drop"
-    ) %>%
+    ) |>
     mutate(
       n_go = ifelse(condition == 0, n_correct, n - n_correct),
       condition_contrast = ifelse(condition == 0, 0.5, -0.5),
       n_go = ifelse(n_go == 450 & condition == 0, 449, n_go),
       n_go = ifelse(n_go == 0, 1, n_go),
       n_go = ifelse(n_go == 150 & condition == 2, 149, n_go)
-    ) %>%
+    ) |>
     arrange(pps)
 }
 
@@ -786,27 +793,27 @@ session2_splithalf <- numeric(100)
 
 # Loop to calculate split-half reliability
 for (i in 1:100) {
-  resampled_data <- data_long %>%
-    group_by(pps, session, condition) %>%
-    nest() %>%
+  resampled_data <- data_long |>
+    group_by(pps, session, condition) |>
+    nest() |>
     mutate(
       half1 = map(data, ~ slice_sample(.x, n = nrow(.x), replace = TRUE)),
       half2 = map(data, ~ slice_sample(.x, n = nrow(.x), replace = TRUE))
-    ) %>%
-    select(-data) %>%
-    unnest(cols = c(half1, half2), names_sep = "_") %>%
+    ) |>
+    select(-data) |>
+    unnest(cols = c(half1, half2), names_sep = "_") |>
     ungroup()
   
-  data_long_resampled_half1 <- resampled_data %>%
-    select(condition, session, pps, contains("half1")) %>%
-    rename_with(~ gsub("half1_", "", .)) %>%
-    summarise_data() %>%
+  data_long_resampled_half1 <- resampled_data |>
+    select(condition, session, pps, contains("half1")) |>
+    rename_with(~ gsub("half1_", "", .)) |>
+    summarise_data() |>
     calc_dprime()
   
-  data_long_resampled_half2 <- resampled_data %>%
-    select(condition, session, pps, contains("half2")) %>%
-    rename_with(~ gsub("half2_", "", .)) %>%
-    summarise_data() %>%
+  data_long_resampled_half2 <- resampled_data |>
+    select(condition, session, pps, contains("half2")) |>
+    rename_with(~ gsub("half2_", "", .)) |>
+    summarise_data() |>
     calc_dprime()
   
   session1_splithalf[i] <- cor(data_long_resampled_half1$d_prime_t1, data_long_resampled_half2$d_prime_t1)

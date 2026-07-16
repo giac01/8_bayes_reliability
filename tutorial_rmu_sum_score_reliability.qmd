@@ -54,8 +54,8 @@ measurement_error = rnorm(N*J, mean = 0, sd = sqrt(error_variance))
 
 df$measurement = true_scores[df$mouse] + measurement_error
 
-df_average_lengths = df %>%
-  group_by(mouse) %>%
+df_average_lengths = df |>
+  group_by(mouse) |>
   summarise(average_measurement = mean(measurement))
 
 ```
@@ -91,7 +91,7 @@ We can estimate reliability using (unstandardised) coefficient alpha. First, we 
 
 ```{r}
 
-df_wide = df %>%
+df_wide = df |>
   pivot_wider(
     id_cols = mouse,
     names_from = j,
@@ -99,7 +99,7 @@ df_wide = df %>%
     names_prefix = "measurement"
   )
 
-df_wide %>% 
+df_wide |> 
   head()
 
 
@@ -190,15 +190,15 @@ source("https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/rel
 
 ```{r}
 
-posterior_draws = brms_model %>%
-  as_draws_df() %>%
-  select(starts_with("r_mouse")) %>%
+posterior_draws = brms_model |>
+  as_draws_df() |>
+  select(starts_with("r_mouse")) |>
   t()
 
 nrow(posterior_draws) # should equal the number of subjects
 ncol(posterior_draws) # should equal the number of post-warmup posterior draws
 
-gbtoolbox::reliability(posterior_draws)$hdci
+gbtoolbox::reliability(posterior_draws)
 
 ```
 
@@ -225,8 +225,8 @@ measurement_error = rnorm(N*J, mean = 0, sd = sqrt(error_variance))
 
 df$measurement = true_scores[df$mouse] + measurement_error
 
-df_average_lengths = df %>%
-  group_by(mouse) %>%
+df_average_lengths = df |>
+  group_by(mouse) |>
   summarise(average_measurement = mean(measurement))
 
 cat("Simulation reliability = ")
@@ -251,12 +251,12 @@ brms_model = brm(
   threads = threading(4) # This is to speed up model fitting using parallelization
   )
 
-posterior_draws = brms_model %>%
-  as_draws_df() %>%
-  select(starts_with("r_mouse")) %>%
+posterior_draws = brms_model |>
+  as_draws_df() |>
+  select(starts_with("r_mouse")) |>
   t()
 
-gbtoolbox::reliability(posterior_draws)$hdci
+gbtoolbox::reliability(posterior_draws)
 
 ```
 
@@ -273,9 +273,9 @@ cat("Squared Correlation between mean and true scores  = ")
 
 cor(df_average_lengths$average_measurement, true_scores)^2
 
-cat("RMU:")
+cat("RMU:\n")
 
-gbtoolbox::reliability(posterior_draws)$hdci
+gbtoolbox::reliability(posterior_draws)
 
 
 ```
@@ -308,13 +308,13 @@ error_variance      = 2
 df = expand.grid(j = 1:10, mouse = 1:N)
 
 for(i in 1:N){
-  df = df %>%
+  df = df |>
     filter(!(mouse == i & j > J[i]))
 }
 
 prob_success_first_trial = rbeta(N,3,3)  # probability of success on first trial
 
-df$prob_success_first_trial = prob_success_first_trial[df$mouse] %>% qlogis()
+df$prob_success_first_trial = prob_success_first_trial[df$mouse] |> qlogis()
 
 df$y = rbinom(nrow(df), size = 1, prob = plogis(df$prob_success_first_trial + .1*df$j))
 
@@ -337,8 +337,8 @@ Our data structure looks like this:
 
 ```{r}
 
-df %>% 
-  select(-prob_success_first_trial) %>%
+df |> 
+  select(-prob_success_first_trial) |>
   slice(1:10)
 
 ```
@@ -357,17 +357,17 @@ By transforming the random intercept with the inverse logit function we can look
 
 
 ```{r}
-posterior_draws = brms_model_logistic %>%
-  as_draws_df() %>%
-  select(starts_with("r_mouse")) %>%
+posterior_draws = brms_model_logistic |>
+  as_draws_df() |>
+  select(starts_with("r_mouse")) |>
   t()
 
-posterior_draws %>%
-  t() %>% # make sure participant is on the COLUMN for pivot_wider!
-  data.frame() %>%
-  `colnames<-`(1:ncol(.)) %>%
-  pivot_longer(cols = everything()) %>%
-  filter(as.numeric(name) < 201) %>%
+posterior_draws |>
+  t() |> # make sure participant is on the COLUMN for pivot_wider!
+  data.frame() |>
+  (\(x) `colnames<-`(x, 1:ncol(x)))() |>
+  pivot_longer(cols = everything()) |>
+  filter(as.numeric(name) < 201) |>
   ggplot(aes(x = value, group = name)) +
   geom_density(fill = NA, color = ggplot2::alpha("black", .5)) +
   theme_bw() +
@@ -376,13 +376,13 @@ posterior_draws %>%
     subtitle = "Random Intercept Posterior Distributions for each subject \nLogit scale, first 200 subjects only"
   )
 
-posterior_draws %>%
-  t() %>% # make sure participant is on the COLUMN for pivot_wider!
-  data.frame() %>%
-  `colnames<-`(1:ncol(.)) %>%
-  pivot_longer(cols = everything()) %>%
-  filter(as.numeric(name) < 201) %>%
-  mutate(value = plogis(value)) %>%
+posterior_draws |>
+  t() |> # make sure participant is on the COLUMN for pivot_wider!
+  data.frame() |>
+  (\(x) `colnames<-`(x, 1:ncol(x)))() |>
+  pivot_longer(cols = everything()) |>
+  filter(as.numeric(name) < 201) |>
+  mutate(value = plogis(value)) |>
   ggplot(aes(x = value, group = name)) +
   geom_density(fill = NA, color = ggplot2::alpha("black", .5)) +
   theme_bw() +
@@ -409,7 +409,7 @@ cor(posterior_means,prob_success_first_trial)^2
 
 ```{r}
 
-gbtoolbox::reliability(posterior_draws)$hdci
+gbtoolbox::reliability(posterior_draws)
 
 ```
 

@@ -3,14 +3,13 @@
 sim_factor_stnd = function(
     n_rows,              # SCALAR: Sample Size
     std_loading,         # SCALAR OR VECTOR: Standardized Factor Loading
-    n_items,             # SCALARL Number of items,
     intercepts,
     debug = FALSE
     
 ){
-  if (length(std_loading)==1 & n_items > 1){
-    std_loading = rep(std_loading, n_items)
-  }
+
+  n_items = length(std_loading)
+  
   if (is.null(intercepts)){
     intercepts  = rep(0, n_items)
   }
@@ -18,8 +17,11 @@ sim_factor_stnd = function(
   error_variance = 1^2 - std_loading^2        # Set the error variance to 1-loading^2 (because obs variance =1)
   
   true_scores = rnorm(n_rows)
-  dat         = sapply(1:n_items, function(i) intercepts[i] + std_loading[i]*true_scores + rnorm(n_rows, sd = sqrt(error_variance[i]))) # Note the sd(true_score) and sd(error) must be kept at 1 for the loading calculation to make sense!
-  dat         = data.frame(true_scores,dat) 
+  dat_t1         = sapply(1:n_items, function(i) intercepts[i] + std_loading[i]*true_scores + rnorm(n_rows, sd = sqrt(error_variance[i]))) # Note the sd(true_score) and sd(error) must be kept at 1 for the loading calculation to make sense!
+  dat_t1         = data.frame(true_scores,dat_t1) 
+  
+  dat_t2         = sapply(1:n_items, function(i) intercepts[i] + std_loading[i]*true_scores + rnorm(n_rows, sd = sqrt(error_variance[i]))) # Note the sd(true_score) and sd(error) must be kept at 1 for the loading calculation to make sense!
+  dat_t2         = data.frame(true_scores,dat_t2) 
   
   if (debug){
     cat("Error Variance: \n")
@@ -28,21 +30,25 @@ sim_factor_stnd = function(
     cat("std_loading: \n")
     print(std_loading)
     
-    dat$mean = dat %>%
+    dat_t1$mean = dat_t1 %>%
+      select(starts_with("X")) %>%
+      apply(.,1,mean)
+    
+    dat_t2$mean = dat_t2 %>%
       select(starts_with("X")) %>%
       apply(.,1,mean)
     
     cat("\nCor(t, x):\n")
-    print(round(cor(dat), digits = 2))
+    print(round(cor(dat_t1), digits = 2))
     
     cat("\nCor(t, x) SQAURED :\n")
-    print(round(cor(dat)^2, digits = 2))
+    print(round(cor(dat_t1)^2, digits = 2))
     
     cat("\nCov(t, x):\n")
-    print(round(cov(dat), digits = 2))
+    print(round(cov(dat_t1), digits = 2))
     
     
   }
   
-  return(dat)
+  return(list(dat_t1,dat_t2))
 }

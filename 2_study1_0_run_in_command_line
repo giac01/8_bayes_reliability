@@ -1,0 +1,21 @@
+#!/bin/bash
+# Run study 1's simulation locally in the project's Docker container.
+# Usage: ./2_study1_0_run_in_command_line
+
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+export RUN_REP="167"                                                             # 77 reps took 6 hours locallly 167 reps took 12.9 hours
+export SEED_ENV="2"
+
+docker run --rm \
+  -v /home/giaco:/home/giaco \
+  -w /home/giaco/GitHub/8_bayes_reliability \
+  -e OMP_NUM_THREADS \
+  -e OPENBLAS_NUM_THREADS \
+  -e MKL_NUM_THREADS \
+  -e VECLIB_MAXIMUM_THREADS \
+  -e RUN_REP \
+  -e SEED_ENV \
+  bignardig/tidyverse461:v2 Rscript 2_study1_1_simulate.R

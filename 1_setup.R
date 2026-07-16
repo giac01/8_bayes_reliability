@@ -13,7 +13,8 @@ library(future.apply)
 library(cmdstanr)
 
 if (!requireNamespace("gbtoolbox", quietly = TRUE)) {
-  devtools::install_github("giac01/gbtoolbox")
+  devtools::install_github("giac01/gbtoolbox", ref = "d2ec8d3")
+  
 }
 
 library(gbtoolbox)

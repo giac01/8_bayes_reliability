@@ -47,7 +47,7 @@ Simulates single-factor data across a range of sample sizes and loading patterns
 - `2_study1_1_simulate.R` — for each combination of sample size and loading set, simulates data and fits `stan_models/stan_inequiv_factor_model_v14.stan`
 - `2_study1_2_analysis.R` — reads in and summarises the simulation output (bias, RMSE, coverage) across conditions
 
-Simulation functions used: **`sim_factor_stnd`** (generates standardised-loading factor data), **`run_factor_sim_2`** (orchestrates simulation + Stan fit + reliability estimation for one condition, internally calling `coef_h` for coefficient H and `calc_r_stan_m3` for the RMU correlation from posterior draws)
+Simulation functions used: **`sim_factor_stnd`** (generates standardised-loading factor data), **`run_study1_simulation`** (orchestrates simulation + Stan fit + reliability estimation for one condition, internally calling `coef_h` for coefficient H and `calc_r_stan_m3` for the RMU correlation from posterior draws)
 
 ### Study 2 — Signal detection (SDT) model (`3_study2_*`)
 

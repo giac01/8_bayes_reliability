@@ -6,9 +6,9 @@ run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))                     
 seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))                    # Random Number Seed
 
 # Compile stan model -----------------------------------------------------------
-cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1") # THIS NEEDS UPDATNG TO LOCATION OF CMDSTAN INSTALL ON HPC CLUSTER
+cmdstanr::set_cmdstan_path(path = "/home/giaco/.cmdstan/cmdstan-2.39.0") # THIS NEEDS UPDATNG TO LOCATION OF CMDSTAN INSTALL ON HPC CLUSTER
 
-mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v14.stan"))
+mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v16.stan"))
 
 # Create Parameter Table ---------------------------------------------------
 
@@ -48,17 +48,16 @@ params_list <- expand.grid(
 
 # Run code in parallel using future --------------------------------------------
 print(availableCores())
-
-future::plan(future::multisession(workers = availableCores()))
+ 
+future::plan(future::multicore(workers = availableCores()))
 # future::plan(future::multisession(workers = 8))
 
 time_a = Sys.time()
 
 results <- future.apply::future_lapply(future.seed = seed_env, 1:nrow(params_list), function(i) {
-  run_factor_sim_2(
+  run_study1_simulation(
     i = i,
     n = params_list$sample_sizes[i], 
-    n_items  = length(loadings_list[[params_list$loading_set[i]]]), 
     loadings = loadings_list[[params_list$loading_set[i]]],
     additional_tests = TRUE
   )
@@ -71,8 +70,8 @@ time_b - time_a
 future::plan(future::sequential())
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
-filename <- paste0("2_study1_seed", seed_env ,"_",timestamp,".rds")
-saveRDS(results, file = file.path("results", filename))
+filename <- paste0("study1_", seed_env ,"_",timestamp,".rds")
+saveRDS(results, file = file.path("results", "study1_results", filename))
 
 
 # Time difference of 2.264748 days
