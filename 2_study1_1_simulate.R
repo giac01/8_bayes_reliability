@@ -28,8 +28,8 @@ loadings_list = list(
   c(.3,.2,.1),
   c(.4,.3,.3,.2,.1,.0),
   c(.4,.4,.4,.4),
-  c(.6,.5,.3,.1,.1,.1),
-  c(.7,.6,.5,.5,.4,.4,.4,.3,.3)
+  c(.6,.5,.4,.3,.2),
+  c(.7,.6,.5,.5,.5,.4,.4,.3,.3)
 )
 
 # Reliabilities 
@@ -40,7 +40,7 @@ lapply(loadings_list, rel_function)
 # Example of creating a list of all combinations
 params_list <- expand.grid(
   loading_set  = 1:length(loadings_list),
-  sample_sizes = c(250, 500, 1000),
+  sample_sizes = c(50, 250, 1000),
   run_rep = 1:run_rep_env  
 ) 
 
