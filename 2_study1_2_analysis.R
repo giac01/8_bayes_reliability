@@ -14,8 +14,8 @@ loadings_list = list(
   c(.3,.2,.1),
   c(.4,.3,.3,.2,.1,.0),
   c(.4,.4,.4,.4),
-  c(.6,.5,.3,.1,.1,.1),
-  c(.7,.6,.5,.5,.4,.4,.4,.3,.3)
+  c(.6,.5,.4,.3,.2),
+  c(.7,.6,.5,.5,.5,.4,.4,.3,.3)
 )
 
 loadings_list_paste = lapply(loadings_list, function(x) paste0(x, collapse = "_")) %>% unlist()
@@ -650,7 +650,7 @@ results_table_long  %>%
   geom_text(
     data = results_table_cleaned2,
     aes(
-      y = ifelse(loading_list_pretty == " .7,  .6,  .5,  .5,  .4,  .4,  .4,  .3,  .3", 0, 0.89),
+      y = ifelse(loading_list_pretty == " .7,  .6,  .5,  .5,  .5,  .4,  .4,  .3,  .3", 0, 0.89),
       # y = .89,
       x = factor(sample_sizes),
       label = paste0(
@@ -659,7 +659,7 @@ results_table_long  %>%
         "C = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", coverage)), "\n"
       )
     ),
-    vjust = ifelse(results_table_cleaned2$loading_list_pretty == " .7,  .6,  .5,  .5,  .4,  .4,  .4,  .3,  .3", 0, 1),
+    vjust = ifelse(results_table_cleaned2$loading_list_pretty == " .7,  .6,  .5,  .5,  .5,  .4,  .4,  .3,  .3", 0, 1),
     # vjust = 1,
     hjust = 1,
     size = 2.6,
