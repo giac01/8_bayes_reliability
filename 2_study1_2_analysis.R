@@ -1,12 +1,21 @@
-# Load Packages ----------------------------------------------------------------
-# Run analyses using the docker container
+# Study 1: Factor-model simulation - analysis of RMU vs. Alpha / H (FA) / H (IRT)
+# --------------------------------------------------------------------------------
+# Run using the docker container: bignardig/tidyverse461:v2
+#
+# Compares four reliability estimators (RMU, Alpha, H (FA), H (IRT)) against
+# test-retest reliability (correlation between t1/t2 Bayesian factor scores)
+# and, where available, the population coefficient H.
+
+# Load Packages ------------------------------------------------------------------
 
 library(tidyverse)
 library(gt)
 
 rm(list = ls(all.names = TRUE))
 
-# Load Data --------------------------------------------------------------------
+# Load Data ------------------------------------------------------------------------
+
+## Loading conditions used in the simulation --------------------------------------
 
 loadings_list = list(
   c( 0, 0, 0, 0, 0, 0),
@@ -20,26 +29,23 @@ loadings_list = list(
 
 loadings_list_paste = lapply(loadings_list, function(x) paste0(x, collapse = "_")) %>% unlist()
 
-loadings_list_pretty =  lapply(loadings_list, function(x) paste0(gbtoolbox::apa_num(x, n_decimal_places = 1), collapse = ", ")) %>% unlist()
+loadings_list_pretty  = lapply(loadings_list, function(x) paste0(gbtoolbox::apa_num(x, n_decimal_places = 1), collapse = ", ")) %>% unlist()
 loadings_list_pretty2 = lapply(loadings_list, function(x) paste0("Loadings:", paste0(gbtoolbox::apa_num(x, n_decimal_places = 1), collapse = ", "))) %>% unlist()
-loadings_list_pretty
-loadings_list_pretty2
+
+## Read raw simulation results ------------------------------------------------------
 
 # I ran the simulation code multiple times on the cluster, so we have several results files we want to join
 
 results_path = file.path("results","study1_results")
 results_files = list.files(results_path,
                            pattern = ".rds",
-                           # pattern = "^4_results_tauinequiv_seed",
                            recursive = FALSE,
                            full.names = TRUE
                            )
 results = lapply(results_files, function(x) readRDS(x))
-
 results = do.call("c", results)
-# results = unlist(results)
 
-## Create results table for simulation results ---------------------------------
+## Build results_table (wide, one row per replicate) --------------------------------
 # Each element of `results` is now a test-retest pair (t1/t2): every estimator
 # (RMU/Alpha/H (FA)/H (IRT)) has a _t1 and _t2 version. We keep one row per
 # original replicate here, and stack t1/t2 into long format further down.
@@ -63,7 +69,7 @@ results_table$third_min_loading = sapply(results, function(x) sort(x$settings$lo
 # ASCOTS true-score-based estimand used previously, which is no longer computed).
 results_table$test_retest_reliability = sapply(results, function(x) x$test_retest_reliability) %>% as.numeric()
 
-# T1 estimates ------------------------------------------------------------------
+### T1 estimates ---------------------------------------------------------------
 results_table$rmu_est_t1  = sapply(results, function(x) x$rmu_est_t1$rmu_estimate) %>% as.numeric()
 results_table$rmu_lb_t1   = sapply(results, function(x) x$rmu_est_t1$hdci_lowerbound) %>% as.numeric()
 results_table$rmu_ub_t1   = sapply(results, function(x) x$rmu_est_t1$hdci_upperbound) %>% as.numeric()
@@ -84,7 +90,7 @@ results_table$true_score_coverage_t1 = sapply(results, function(x) x$true_score_
 results_table$diag_divergences_t1    = sapply(results, function(x) x$diagnostics_divergences_t1) %>% as.numeric()
 results_table$diag_ebfmi_t1          = sapply(results, function(x) length(which(x$diagnostics_ebfmi_t1 < .2)))
 
-# T2 estimates ------------------------------------------------------------------
+### T2 estimates ---------------------------------------------------------------
 results_table$rmu_est_t2  = sapply(results, function(x) x$rmu_est_t2$rmu_estimate) %>% as.numeric()
 results_table$rmu_lb_t2   = sapply(results, function(x) x$rmu_est_t2$hdci_lowerbound) %>% as.numeric()
 results_table$rmu_ub_t2   = sapply(results, function(x) x$rmu_est_t2$hdci_upperbound) %>% as.numeric()
@@ -107,10 +113,34 @@ results_table$diag_ebfmi_t2          = sapply(results, function(x) length(which(
 
 results_table$sample_sizes = factor(results_table$sample_sizes)
 
+# Sanity Checks on Simulation Output ------------------------------------------------
 
-# PERFORMANCE CALCULATION  -----------------------------------------------------------------
+## Check for duplicate RNG seeds ----------------------------------------------------
+# O(n^2) over all replicates - slow, so it's off by default. Set to TRUE to re-run.
 
-# Stack t1/t2 into long format --------------------------------------------------
+run_seed_check = FALSE
+
+if (run_seed_check) {
+  n_results <- length(results)
+  matches <- matrix(FALSE, nrow=n_results, ncol=n_results)
+
+  for(i in 1:(n_results-1)) {
+    for(j in (i+1):n_results) {
+      matches[i,j] <- identical(results[[i]]$settings$seed,
+                                results[[j]]$settings$seed)
+    }
+  }
+
+  if(any(matches)) {
+    which(matches, arr.ind=TRUE)
+  } else {
+    print("No identical RNG states found!")
+  }
+}
+
+# Reshape to Long Format -------------------------------------------------------------
+
+## Stack t1/t2 into long format ------------------------------------------------------
 # Each original replicate contributes two rows (t1, t2). `rowid` identifies the
 # original replicate and is shared across its t1/t2 rows, so it doubles as the
 # clustering variable used below to compute cluster-robust-ish standard errors
@@ -129,7 +159,7 @@ results_table_stacked = results_table %>%
     diag_ebfmi_binary       = as.numeric(diag_ebfmi > 0)
   )
 
-# Convert data to long over estimator name
+## Pivot longer over estimator name --------------------------------------------------
 
 results_table_long = results_table_stacked %>%
   pivot_longer(cols = c(rmu_est, h_est, a_est, irth_est,
@@ -137,10 +167,11 @@ results_table_long = results_table_stacked %>%
                         rmu_ub, h_ub, a_ub, irth_ub
                         ), names_to = c("name", ".value"), names_pattern = "(rmu|h|a|irth)_(.*)")
 
-## TEST-RETEST RELIABILITY ESTIMAND RESULTS -------------------------------------
+# Performance Metrics ----------------------------------------------------------------
+
+## Overall Performance: test-retest reliability estimand ----------------------------
 
 results_table_long %>%
-  # filter(name == "rmu") %>%
   group_by(name, loading_set, sample_sizes) %>%
   mutate(
     name       = factor(name, levels = c("rmu","a","h","irth")),
@@ -175,7 +206,7 @@ results_table_long %>%
     EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
     EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
 
-    #bias
+    # Bias
     bias        = mean(difference),
     bias_se     = sqrt(1/(n_clusters*(n_clusters-1))*sum((est-mean)^2)),
     bias_lb     = bias - qnorm(0.975)*bias_se,
@@ -194,7 +225,7 @@ results_table_long %>%
     RMSE_lb     = sqrt(MSE_lb),
     RMSE_ub     = sqrt(MSE_ub),
 
-    #Coverage
+    # Coverage
     coverage    = length(which(ci_correct))/length(ci_correct),
     coverage_se = sqrt((coverage*(1-coverage))/n_clusters),
     coverage_lb = coverage - qnorm(0.975)*coverage_se,
@@ -206,7 +237,6 @@ results_table_long %>%
     coverage_be_lb = coverage_be - qnorm(0.975)*coverage_be_se,
     coverage_be_ub = coverage_be + qnorm(0.975)*coverage_be_se,
 
-
     mean_ci_length = mean(ci_length),
 
     `Mean True Score Coverage`   = mean(true_score_coverage),
@@ -214,18 +244,9 @@ results_table_long %>%
     perc_diag_ebfmi_binary       = sum(diag_ebfmi_binary)/n
 
   ) %>%
-  ungroup() 
-  # select(name, n,
-  #        estimand,
-  #          RMSE, RMSE_lb, RMSE_ub,
-  #          bias, bias_lb, bias_ub,
-  #          EmpSE, EmpSE_lb, EmpSE_ub,
-  #          coverage, coverage_lb, coverage_ub
-  # ) %>%
-  # write.csv(file.path("results_tables","2_results_performance_samplereliability.csv"))
+  ungroup()
 
-
-## Maximal Reliability  --------------------------------------------------------
+## Maximal Reliability: population coefficient H estimand ---------------------------
 
 results_table_long %>%
   mutate(
@@ -234,16 +255,15 @@ results_table_long %>%
     difference = est - estimand,
     ci_correct = (lb <= estimand & ub >= estimand),
     ci_length  = ub - lb,
-    # ci_be_correct = (lb <= mean_est & ub >= mean_est)
   ) %>%
   group_by(name) %>%
   summarise(
 
-    estimand    = mean(pop_coefh),
+    estimand      = mean(pop_coefh),
     pop_coefh     = mean(pop_coefh),                           # population coefficient H
     pop_coefh_sd  = sd(pop_coefh, na.rm = TRUE),               # sanity check (should be 0)
-    n           = n(),
-    n_clusters  = n_distinct(rowid),
+    n             = n(),
+    n_clusters    = n_distinct(rowid),
 
     # Mean Estimate
     mean        = mean(est),
@@ -257,7 +277,7 @@ results_table_long %>%
     EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
     EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
 
-    #bias
+    # Bias
     bias        = mean(difference),
     bias_se     = sqrt(1/(n_clusters*(n_clusters-1))*sum((est-mean)^2)),
     bias_lb     = bias - qnorm(0.975)*bias_se,
@@ -277,17 +297,13 @@ results_table_long %>%
     RMSE_lb     = sqrt(MSE_lb),
     RMSE_ub     = sqrt(MSE_ub),
 
-    #Coverage
+    # Coverage
     coverage    = length(which(ci_correct))/length(ci_correct),
     coverage_se = sqrt((coverage*(1-coverage))/n_clusters),
     coverage_lb = coverage - qnorm(0.975)*coverage_se,
     coverage_ub = coverage + qnorm(0.975)*coverage_se,
 
     mean_ci_length = mean(ci_length),
-
-    # `Mean True Score Coverage`   = mean(true_score_coverage),
-    # perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
-    # perc_diag_ebfmi_binary       = sum(diag_ebfmi_binary)/n
   ) %>%
   ungroup() %>%
   select(name, n,
@@ -298,36 +314,11 @@ results_table_long %>%
          mean_ci_length
          ) %>%
   gt() %>%
-  gt::fmt(columns = !c(name, n), fns = ~ gbtoolbox::apa_num(., n_decimal_places = 3)) |> 
+  gt::fmt(columns = !c(name, n), fns = ~ gbtoolbox::apa_num(., n_decimal_places = 3)) |>
   gtsave(filename = file.path("results_tables","2_study1_performance_comparison.html"))
 
-  # write.csv(file.path("results_tables","2_results_method_comparison.csv"))
-
-# Check seeds ------------------------------------------------------------------
-n_results <- length(results)
-matches <- matrix(FALSE, nrow=n_results, ncol=n_results)
-
-for(i in 1:(n_results-1)) {
-  for(j in (i+1):n_results) {
-    matches[i,j] <- identical(results[[i]]$settings$seed,
-                              results[[j]]$settings$seed)
-  }
-}
-
-# Check if we found any matches
-if(any(matches)) {
-  # Get indices of matches
-  which(matches, arr.ind=TRUE)
-} else {
-  print("No identical RNG states found!")
-}
-
-# identical(results[[1]]$settings$seed, results[[min(65, n_results)]]$settings$seed)
-
-
-# Performance in each condition ------------------------------------------------
-
-# currently not setting specific estimands for different methods
+## Performance by Condition (loadings x sample size x estimator) --------------------
+# Currently not setting different estimands for different estimators.
 
 results_table_cleaned =
 results_table_long %>%
@@ -363,7 +354,7 @@ results_table_long %>%
     EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
     EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
 
-    #bias
+    # Bias
     bias        = mean(difference),
     bias_se     = sqrt(1/(n_clusters*(n_clusters-1))*sum((est-mean)^2)),
     bias_lb     = bias - qnorm(0.975)*bias_se,
@@ -383,17 +374,11 @@ results_table_long %>%
     RMSE_lb     = sqrt(MSE_lb),
     RMSE_ub     = sqrt(MSE_ub),
 
-    #Coverage
+    # Coverage
     coverage    = length(which(ci_correct))/length(ci_correct),
     coverage_se = sqrt((coverage*(1-coverage))/n_clusters),
     coverage_lb = coverage - qnorm(0.975)*coverage_se,
     coverage_ub = coverage + qnorm(0.975)*coverage_se,
-
-    # Bias corrected coverage
-    # cove_cor   = length(which(ci_bias_elimated_correct))/length(ci_bias_elimated_correct),
-    # cove_cor   = length(which(ci_bias_elimated_correct))/length(ci_bias_elimated_correct),
-    # cove_cor   = length(which(ci_bias_elimated_correct))/length(ci_bias_elimated_correct),
-    #
 
     mean_ci_length = mean(ci_length),
 
@@ -415,14 +400,13 @@ results_table_cleaned$name[results_table_cleaned$name=="h"] = "H (FA)"
 results_table_cleaned$name[results_table_cleaned$name=="a"] = "Alpha"
 results_table_cleaned$name[results_table_cleaned$name=="irth"] = "H (IRT)"
 
-## gt table ---------------------------------------------------------------------
+### Export as gt table ---------------------------------------------------------
 results_table_cleaned %>%
   select(-any_of(c("coverage_se", "loading_set", "pop_coefh_sd",
                    "loadings_list_pretty2", "mad", "n_clusters",
                    "mean", "mean_se", "mean_ub", "mean_lb",
                    "bias_se"
   ))) %>%
-  # filter(name == "RMU") %>%
   gt() %>%
   gt::cols_move_to_start(name) %>%
   fmt(
@@ -504,20 +488,67 @@ results_table_cleaned %>%
     everything() ~ px(60)
   ) %>%
   opt_horizontal_padding(scale = 1) %>%
-
   gtsave(filename = file.path("results_tables","2_study1_performance_comparison_differentestimators.html"))
 
+# Does the Estimand Vary with Simulation Conditions? ---------------------------------
 
-# gtsave(filename = file.path("results","4_table_A.html"))
-# gtsave(filename = file.path("results","4_table_withcoefficient_h.docx"))
-#
+mod_estimand = results_table_long |>
+  filter(time == "t1") |>
+  filter(name == "rmu") |>
+  mutate(across(c(loading_set, sample_sizes), factor)) |>
+  lm(test_retest_reliability ~ loading_set*sample_sizes, data = _)
 
+mod_estimand0 = results_table_long |>
+  filter(time == "t1") |>
+  filter(name == "rmu") |>
+  mutate(across(c(loading_set, sample_sizes), factor)) |>
+  lm(test_retest_reliability ~ loading_set, data = _)
 
-# Plots -----------------------------------------------------------------------
+anova(mod_estimand)
+anova(mod_estimand0, mod_estimand)
 
-## bar Charts ------------------------------------------------------
+## Export as gt tables ----------------------------------------------------------
 
-# write.csv(results_table_cleaned, "99_claude_data.csv")
+table_estimand_anova = anova(mod_estimand) %>%
+  broom::tidy() %>%
+  gt() %>%
+  tab_header(title = "ANOVA: test-retest reliability ~ loading_set * sample_sizes") %>%
+  fmt_number(columns = c(sumsq, meansq, statistic, p.value), decimals = 3) %>%
+  sub_missing(missing_text = "")
+
+table_estimand_anova
+
+gtsave(table_estimand_anova, filename = file.path("results_tables", "2_study1_estimand_anova.html"))
+
+table_estimand_modelcomparison = anova(mod_estimand0, mod_estimand) %>%
+  broom::tidy() %>%
+  gt() %>%
+  tab_header(title = "Model comparison: loading_set vs. loading_set * sample_sizes") %>%
+  fmt_number(columns = c(rss, sumsq, statistic, p.value), decimals = 3) %>%
+  sub_missing(missing_text = "")
+
+table_estimand_modelcomparison
+
+gtsave(table_estimand_modelcomparison, filename = file.path("results_tables", "2_study1_estimand_modelcomparison.html"))
+
+# Plots -------------------------------------------------------------------------------
+
+format_decimals <- function(x, decimals = 2) {
+  format_number <- function(num) {
+    if (is.na(num)) {
+      return(NA_character_)
+    } else if (abs(num - 1) < 1e-10) {  # Check if the number is very close to 1
+      return("1")
+    } else if (abs(num) < 1) {
+      return(sub("^-?0.", ".", sprintf(paste0("%.", decimals, "f"), num)))
+    } else {
+      return(sprintf(paste0("%.", decimals, "f"), num))
+    }
+  }
+  sapply(x, format_number)
+}
+
+## Bar chart: bias / EmpSE / MSE / coverage by estimator -----------------------------
 
 data_plot = results_table_cleaned %>%
   rename(
@@ -529,19 +560,6 @@ data_plot = results_table_cleaned %>%
     name = factor(name, levels = c("bias", "EmpSE", "MSE", "Coverage")),
     Estimator = factor(Estimator, levels = c("RMU", "Alpha", "H (FA)", "H (IRT)"))
   )
-
-format_decimals <- function(x, decimals = 2) {
-  format_number <- function(num) {
-    if (abs(num - 1) < 1e-10) {  # Check if the number is very close to 1
-      return("1")
-    } else if (abs(num) < 1) {
-      return(sub("^-?0.", ".", sprintf(paste0("%.", decimals, "f"), num)))
-    } else {
-      return(sprintf(paste0("%.", decimals, "f"), num))
-    }
-  }
-  sapply(x, format_number)
-}
 
 data_plot %>%
   filter(loading_set!=7) %>%
@@ -577,8 +595,8 @@ data_plot %>%
       name == "Coverage" ~ scale_y_continuous(limits = c(.9, 1), labels = function(x) format_decimals(x,decimals = 3) )
     ))
 
+## RMU violin plot ---------------------------------------------------------------
 
-## RMU violine plot  -----------------------------------------------------------
 library(grid)
 
 results_table_cleaned2 = results_table_cleaned %>%
@@ -592,13 +610,6 @@ results_table_long  %>%
   group_by(sample_sizes, loading_set) %>%
   mutate(mean_test_retest_reliability = mean(test_retest_reliability)) %>%
   ggplot(aes(y = est, x = sample_sizes)) +
-  # geom_jitter(
-  #   width = 0.1,
-  #   height = 0,
-  #   shape = 1,
-  #   alpha = .4
-  #   ) +
-  # see::geom_violinhalf
   geom_violin(
     width = .95,
     fill = "grey",
@@ -608,7 +619,6 @@ results_table_long  %>%
   ) +
   stat_summary(fun = mean,
                geom = "point",
-               # y = mean,
                size = 3,
                shape = 3,
                col = "red",
@@ -620,7 +630,6 @@ results_table_long  %>%
       y  = estimand,
       x = sample_sizes
       ),
-    # alpha = .6,
     shape = 1,
     size = 2,
     col = "red",
@@ -651,7 +660,6 @@ results_table_long  %>%
     data = results_table_cleaned2,
     aes(
       y = ifelse(loading_list_pretty == " .7,  .6,  .5,  .5,  .5,  .4,  .4,  .3,  .3", 0, 0.89),
-      # y = .89,
       x = factor(sample_sizes),
       label = paste0(
         "B = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", bias)), "\n",
@@ -660,7 +668,6 @@ results_table_long  %>%
       )
     ),
     vjust = ifelse(results_table_cleaned2$loading_list_pretty == " .7,  .6,  .5,  .5,  .5,  .4,  .4,  .3,  .3", 0, 1),
-    # vjust = 1,
     hjust = 1,
     size = 2.6,
     position = position_nudge(x=.42),
@@ -670,16 +677,11 @@ results_table_long  %>%
   theme(
     legend.position = c(.95, .05),
     legend.justification = c("right", "bottom"),
-    # legend.box.just = "right",
-    # legend.margin = margin(6, 6, 6, 6)
   )
 
 ggsave(file.path("plots","2_study1_violinplot.pdf"), width = 6.2, height = 7)
-# ggsave(file.path("plots","2_study1_violinplot.png"), width = 6.2, height = 7)
 
-colnames(results_table_long)
-
-## Comparison violin plot -----------------------------------------------------------
+## Comparison violin plot: all estimators ---------------------------------------
 
 results_table_long %>%
   mutate(name = factor(name,
@@ -692,13 +694,6 @@ results_table_long %>%
     position = position_dodge(width = 0.8)
     ) +
   geom_hline(aes(yintercept = pop_coefh), linetype = "dashed") +
-  # Adjust error bar position to match violin positions
-  # stat_summary(
-  #   fun.data = ggplot2::mean_cl_normal,
-  #   geom = "errorbar",
-  #   width = 0.2,
-  #   position = position_dodge(width = 0.8)
-  # ) +
   # Add mean points for better visibility
   stat_summary(
     fun = mean,
@@ -730,11 +725,9 @@ results_table_long %>%
 
 ggsave(file.path("plots","2_study1_violinplot_allestimators.pdf"), width = 6.2, height = 7)
 
-
-## Credible Intervals ------------------------------------------------------
+## Credible interval plot (RMU) --------------------------------------------------
 
 results_table_stacked %>%
-  # filter(sample_sizes==1000) %>%
   arrange(rmu_est) %>%
   group_by(sample_sizes,loading_list_pretty2) %>%
   mutate(

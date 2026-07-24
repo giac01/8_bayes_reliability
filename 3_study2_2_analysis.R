@@ -1,4 +1,11 @@
-# Load Packages ----------------------------------------------------------------
+# Study 2: SDT simulation - analysis of RMU vs. Split-Half reliability
+# --------------------------------------------------------------------------------
+# Run using the docker container: bignardig/tidyverse461:v2
+#
+# Compares two reliability estimators (RMU, Split-Half) against test-retest
+# reliability (correlation between t1/t2 Bayesian sensitivity point estimates).
+
+# Load Packages ------------------------------------------------------------------
 
 library(tidyverse)
 library(gt)
@@ -6,21 +13,24 @@ library(clubSandwich)
 
 rm(list = ls(all.names = TRUE))
 
-# Cluster-robust SE of a mean, clustering by sim_id -----------------------------
+# Helper Functions -----------------------------------------------------------------
 
+## Cluster-robust SE of a mean, clustering by sim_id ---------------------------
 # results_table_long has two rows per simulation (t1/t2 waves) that share the
 # same underlying subject-level truth and are therefore not independent
-# (ICC ~ 0.89 for rmu_est by sim_id). The naive SE formulas below (e.g.
-# sqrt(1/(n*(n-1))*sum((est-mean)^2))) assume iid rows, so they understate the
-# Monte Carlo SE of bias/MSE/coverage. This replaces them with a cluster-robust
-# (CR2) SE of the mean, via a trivial intercept-only lm().
+# (ICC ~ 0.89 for rmu_est by sim_id). The naive SE formulas used in Study 1
+# (e.g. sqrt(1/(n*(n-1))*sum((est-mean)^2))) assume iid rows, so they understate
+# the Monte Carlo SE of bias/MSE/coverage. This replaces them with a
+# cluster-robust (CR2) SE of the mean, via a trivial intercept-only lm().
 
 cluster_se_mean = function(x, cluster){
   fit = lm(x ~ 1)
   sqrt(vcovCR(fit, cluster = cluster, type = "CR2")[1, 1])
 }
 
-# Load Data --------------------------------------------------------------------
+# Load Data --------------------------------------------------------------------------
+
+## Read raw simulation results -------------------------------------------------
 
 results_path = file.path("results","study2_results")
 
@@ -30,12 +40,10 @@ results_files = list.files(results_path,
                            full.names = TRUE
 )
 results = lapply(results_files, function(x) readRDS(x))
-
 results = do.call("c", results)
 
-## Extract wave-level (t1 / t2) results into a long results_table --------------
-
-# Each simulation now fits the SDT model separately at t1 and t2 (a full
+## Build results_table (wide, one row per replicate x wave) --------------------
+# Each simulation fits the SDT model separately at t1 and t2 (a full
 # test-retest design), producing two waves of RMU/split-half estimates. We
 # treat each wave as a separate replicate of the same underlying condition, so
 # a single simulation contributes two rows to results_table.
@@ -113,20 +121,43 @@ results_table$sh_ci_length  = results_table$sh_ub  - results_table$sh_lb
 
 results_table$sample_sizes  = factor(results_table$sample_sizes)
 
-# Filter out trials with k_sigma ==0 --------------------------------------------
-
-# Performance was good in these conditions, I removed this condition to simply the presentation of the results
+## Filter out trials with k_sigma == 0 ------------------------------------------
+# Performance was good in these conditions, I removed this condition to simplify the presentation of the results
 
 results_table = results_table[results_table$k_sigma!=0,]
 
-# Performance Measures ---------------------------------------------------------
+# Sanity Checks on Simulation Output ------------------------------------------------
 
-## Check for model-fitting issues ----------------------------------------------
+## Check for duplicate RNG seeds -----------------------------------------------
+# Slow, so it's off by default. Set to TRUE to re-run.
+
+run_seed_check = FALSE
+
+if (run_seed_check) {
+  n_check = 100
+  n_results <- length(results)
+  matches <- matrix(FALSE, nrow=n_check, ncol=n_results)
+
+  for(i in 1:n_check) {
+    for(j in (i+1):n_results) {
+      matches[i,j] <- identical(results[[i]]$settings$seed,
+                                results[[j]]$settings$seed)
+    }
+  }
+
+  if(any(matches)) {
+    which(matches, arr.ind=TRUE)
+  } else {
+    print("No identical RNG states found!")
+  }
+}
+
+## Check for model-fitting issues ------------------------------------------------
 
 results_table$diag_low_bfmi_binary %>% table()
 results_table$diag_divergences_binary %>% table()
 
-## Create results_table_long -----------------------------------------------------------------
+## Diagnostic scatterplot: RMU vs. test-retest reliability -----------------------
 
 results_table %>%
   mutate(
@@ -139,11 +170,17 @@ results_table %>%
   geom_abline(intercept = 0, slope = 1) +
   facet_wrap(~sens_sigma)
 
+# Reshape to Long Format -------------------------------------------------------------
+
+## Pivot longer over estimator name --------------------------------------------------
+
 results_table_long = results_table %>%
   rowid_to_column() %>%
   pivot_longer(cols = c(rmu_est,rmu_lb,rmu_ub, sh_est, sh_lb, sh_ub), names_to = c("name", ".value"), names_pattern = "(rmu|sh)_(.*)")
 
-## Overall Performance ---------------------------------------------------------
+# Performance Metrics ----------------------------------------------------------------
+
+## Overall Performance -----------------------------------------------------------
 
 results_table_long %>%
   group_by(n_items, sens_sigma, name) %>%       # aggregating over sens_mean & wave (t1/t2); estimand pooled across sample_sizes since it doesn't meaningfully vary with n; k_sigma dropped as it's constant (0.2) in this simulation
@@ -201,169 +238,234 @@ results_table_long %>%
   ungroup() %>%
   knitr::kable(digits = 3)
 
-## Relative RMSE ---------------------------------------------------------------
+## Performance by Condition (trials x sensitivity SD x sample size x estimator) ------
 
-x = 0.21065
-y = 0.27458
+results_table_cleaned =
+results_table_long %>%
+  group_by(n_items, sens_sigma, name) %>%       # estimand pooled across sample_sizes since it doesn't meaningfully vary with n; k_sigma dropped as it's constant (0.2) in this simulation
+  mutate(
+    estimand = mean(test_retest_reliability)
+  ) %>%
+  ungroup() %>%
+  group_by(n_items, sens_sigma, name, sample_sizes) %>%       # aggregating over sens_mean & wave (t1/t2); performance metrics still broken down by sample size
+  mutate(
+    difference = est - estimand,
+    ci_correct = (lb <= estimand & ub >= estimand),
+    ci_length  = ub - lb
+  ) %>%
+  summarise(
+    n = n(),
+    estimand    = mean(estimand),
+    estimand_sd = sd(test_retest_reliability),
+    mean        = mean(est),
 
-rp = 100*(y/x-1)
+    bias        = mean(difference),
+    # bias_se     = sqrt(1/(n*(n-1))*sum((est-mean)^2)),                # old: assumes n independent rows
+    bias_se     = cluster_se_mean(difference, sim_id),                  # new: cluster-robust (CR2), clustered by sim_id
+    bias_lb     = bias - qnorm(0.975)*bias_se,
+    bias_ub     = bias + qnorm(0.975)*bias_se,
 
-x + rp/100*x
+    EmpSE       = sd(est),
+    EmpSE_se    = EmpSE/sqrt(2*(n-1)),
+    EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
+    EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
 
+    # Mean Squared Error
+    MSE         = mean((difference)^2),
+    # MSE_se      = sqrt(sum((difference^2-MSE)^2)/(n*(n-1))),          # old: assumes n independent rows
+    MSE_se      = cluster_se_mean(difference^2, sim_id),                # new: cluster-robust (CR2), clustered by sim_id
+    MSE_lb      = MSE - qnorm(0.975)*MSE_se,
+    MSE_ub      = MSE + qnorm(0.975)*MSE_se,
 
-## Performance in each condition ---------------------------------------------------
+    # Root Mean Squared Error
+    RMSE        = sqrt(MSE),
+    RMSE_lb     = sqrt(MSE_lb),
+    RMSE_ub     = sqrt(MSE_ub),
 
-  results_table_cleaned =
-  results_table_long %>%
-    group_by(n_items, sens_sigma, name) %>%       # estimand pooled across sample_sizes since it doesn't meaningfully vary with n; k_sigma dropped as it's constant (0.2) in this simulation
-    mutate(
-      estimand = mean(test_retest_reliability)
-    ) %>%
-    ungroup() %>%
-    group_by(n_items, sens_sigma, name, sample_sizes) %>%       # aggregating over sens_mean & wave (t1/t2); performance metrics still broken down by sample size
-    mutate(
-      difference = est - estimand,
-      ci_correct = (lb <= estimand & ub >= estimand),
-      ci_length  = ub - lb
-    ) %>%
-    summarise(
-      n = n(),
-      estimand    = mean(estimand),
-      estimand_sd = sd(test_retest_reliability),
-      mean        = mean(est),
+    mae         = mean(abs(difference)),
 
-      bias        = mean(difference),
-      # bias_se     = sqrt(1/(n*(n-1))*sum((est-mean)^2)),                # old: assumes n independent rows
-      bias_se     = cluster_se_mean(difference, sim_id),                  # new: cluster-robust (CR2), clustered by sim_id
-      bias_lb     = bias - qnorm(0.975)*bias_se,
-      bias_ub     = bias + qnorm(0.975)*bias_se,
+    coverage    = length(which(ci_correct))/length(ci_correct),
+    # coverage_se = sqrt((coverage*(1-coverage))/n),                    # old: assumes n independent Bernoulli trials
+    coverage_se = cluster_se_mean(as.numeric(ci_correct), sim_id),      # new: cluster-robust (CR2), clustered by sim_id
+    coverage_lb = coverage - qnorm(0.975)*coverage_se,
+    coverage_ub = coverage + qnorm(0.975)*coverage_se,
 
-      EmpSE       = sd(est),
-      EmpSE_se    = EmpSE/sqrt(2*(n-1)),
-      EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
-      EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
+    mean_ci_length = mean(ci_length),
+    perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
+    sum_diag_divergences_binary = sum(diag_divergences_binary),
+    sum_diag_low_bfmi_binary    = sum(diag_low_bfmi_binary),
+    mean_testretest_cor_dprime  = mean(testretest_cor_dprime)
+  )  %>%
+  ungroup()
 
-      # Mean Squared Error
-      MSE         = mean((difference)^2),
-      # MSE_se      = sqrt(sum((difference^2-MSE)^2)/(n*(n-1))),          # old: assumes n independent rows
-      MSE_se      = cluster_se_mean(difference^2, sim_id),                # new: cluster-robust (CR2), clustered by sim_id
-      MSE_lb      = MSE - qnorm(0.975)*MSE_se,
-      MSE_ub      = MSE + qnorm(0.975)*MSE_se,
+### Export as gt table -----------------------------------------------------------
 
-      # Root Mean Squared Error
-      RMSE        = sqrt(MSE),
-      RMSE_lb     = sqrt(MSE_lb),
-      RMSE_ub     = sqrt(MSE_ub),
-
-      mae         = mean(abs(difference)),
-
-      coverage    = length(which(ci_correct))/length(ci_correct),
-      # coverage_se = sqrt((coverage*(1-coverage))/n),                    # old: assumes n independent Bernoulli trials
-      coverage_se = cluster_se_mean(as.numeric(ci_correct), sim_id),      # new: cluster-robust (CR2), clustered by sim_id
-      coverage_lb = coverage - qnorm(0.975)*coverage_se,
-      coverage_ub = coverage + qnorm(0.975)*coverage_se,
-
-      mean_ci_length = mean(ci_length),
-      perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
-      sum_diag_divergences_binary = sum(diag_divergences_binary),
-      sum_diag_low_bfmi_binary    = sum(diag_low_bfmi_binary),
-      mean_testretest_cor_dprime  = mean(testretest_cor_dprime)
-    )  %>%
-    ungroup()
-
-  table_performance_comparison =
-  results_table_cleaned %>%
-    # filter(name == "rmu") %>%
-    mutate(name = case_when(
-      name == "rmu"  ~ "RMU",
-      name == "sh" ~ "SH",
-      TRUE ~ NA_character_  # Catches any other values
-    )) %>%
-    select(-estimand_sd, -coverage_se) %>%
-    select(name, estimand, everything()) %>%
-    arrange(sens_sigma, n_items, sample_sizes, name) %>%
-    gt() %>%
-    fmt(
-      columns = where(is.numeric),
-      fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
-    ) %>%
-    fmt_number(
-      columns = c(n, n_items, sum_diag_divergences_binary, sum_diag_low_bfmi_binary),
-      decimals = 0
-    ) %>%
-    fmt_percent(
-      columns = c(starts_with("coverage"),perc_diag_divergences_binary),
-      decimals = 1
-    ) %>%
-    cols_label(
-      sample_sizes ~ "{{n_obs}}",
-      n            ~ "{{n_sim}}",      # avg_cor2     ~ "{{:rho:_:theta:,x^2}}",
-      # estimand     ~ "{{mean[:rho:_:theta:,x^2 ]}}",
-      estimand ~ "estimand",
-      # sens_mean    ~ "{{:mu:_d'}}",
-      sens_sigma   ~ "{{:sigma:_d'}}",
-      n_items      ~ "{{n_trials}}",
-      EmpSE    ~ "",
-      EmpSE_lb ~ "LB",
-      EmpSE_ub ~ "UB",
-      bias     ~ "",
-      bias_lb  ~ "LB",
-      bias_ub  ~ "UB",
-      RMSE    ~ "",
-      RMSE_lb  ~ "LB",
-      RMSE_ub  ~ "UB",
-      coverage ~ "Cov.",
-      coverage_lb  ~ "LB",
-      coverage_ub  ~ "UB",
-      mean_ci_length ~  md("Mean<br>Length"),
-      name         ~ "Est",
-      perc_diag_divergences_binary ~ md("% DT"),
-      sum_diag_divergences_binary ~ md("N Divergent<br>Transitions"),
-      sum_diag_low_bfmi_binary ~   md("% Low<br>E-BFMI"),
-      # .fn = md
-
-    )  %>%
-    tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
-    tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
-    tab_spanner(label = "RMSE 95% CI", columns = c(RMSE, RMSE_lb, RMSE_ub)) %>%
-    tab_spanner(label = "EmpSE 95% CI", columns = c(EmpSE, EmpSE_lb, EmpSE_ub)) %>%
-    tab_spanner(label = "Simulation Parameters",
-                columns = c(name,estimand, sens_sigma, n_items, sample_sizes, n)) %>%
-    tab_spanner(label = "Estimator Performance",
-                columns = c(contains("RMSE"),contains("EmpSE"), contains("bias"))) %>%
-    tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
-    tab_footnote(
-      footnote = html("<b>n<sub>sim</sub></b> = number of simulations completed for this set of simulation parameters.
-                <b>n<sub>obs</sub></b> = number of subjects per simulation.
-                <b>RMSE</b> = Root Mean Squared Error.
-                <b>Coverage</b> = proportion of times the 95% credible intervals include the population reliability, which should be around 95%.
-                <b>estimand</b> = test-retest reliability, i.e. the mean correlation between Bayesian sensitivity point-estimates at t1 and t2, pooled across all sample sizes for a given combination of trial number and sensitivity SD.
-                <b>Mean Length</b> = Mean length of credible or confidence interval.
-                <b>σ<sub>d'</sub></b> = standard deviation of population true sensitivity values across subjects.
-                <b>n<sub>trials</sub></b> = number of trials completed per participant.
-                <b>% DT</b> = Percent of simulations with divergent transitions (applies to Bayesian measurement models only).
-                      "
-      )
-    ) %>%
-    tab_style(
-      style = cell_fill(color = "lightgray"),
-      locations = cells_body(
-        columns = everything(),
-        rows = which((name=="RMU"))
-      )
-    ) %>%
-    tab_options(
-      table.width = pct(35)
-    ) %>%
-  gt::cols_hide(
-    c(mae,bias_se, mean, ends_with("_se"),mean_testretest_cor_dprime, starts_with("MSE"), contains("low_bfmi"),sum_diag_divergences_binary)
+table_performance_comparison =
+results_table_cleaned %>%
+  mutate(name = case_when(
+    name == "rmu"  ~ "RMU",
+    name == "sh" ~ "SH",
+    TRUE ~ NA_character_  # Catches any other values
+  )) %>%
+  select(-estimand_sd, -coverage_se) %>%
+  select(name, estimand, everything()) %>%
+  arrange(sens_sigma, n_items, sample_sizes, name) %>%
+  gt() %>%
+  fmt(
+    columns = where(is.numeric),
+    fns = function(x) gbtoolbox::apa_num(x, n_decimal_places = 3)
+  ) %>%
+  fmt_number(
+    columns = c(n, n_items, sum_diag_divergences_binary, sum_diag_low_bfmi_binary),
+    decimals = 0
+  ) %>%
+  fmt_percent(
+    columns = c(starts_with("coverage"),perc_diag_divergences_binary),
+    decimals = 1
+  ) %>%
+  cols_label(
+    sample_sizes ~ "{{n_obs}}",
+    n            ~ "{{n_sim}}",
+    estimand ~ "estimand",
+    sens_sigma   ~ "{{:sigma:_d'}}",
+    n_items      ~ "{{n_trials}}",
+    EmpSE    ~ "",
+    EmpSE_lb ~ "LB",
+    EmpSE_ub ~ "UB",
+    bias     ~ "",
+    bias_lb  ~ "LB",
+    bias_ub  ~ "UB",
+    RMSE    ~ "",
+    RMSE_lb  ~ "LB",
+    RMSE_ub  ~ "UB",
+    coverage ~ "Cov.",
+    coverage_lb  ~ "LB",
+    coverage_ub  ~ "UB",
+    mean_ci_length ~  md("Mean<br>Length"),
+    name         ~ "Est",
+    perc_diag_divergences_binary ~ md("% DT"),
+    sum_diag_divergences_binary ~ md("N Divergent<br>Transitions"),
+    sum_diag_low_bfmi_binary ~   md("% Low<br>E-BFMI"),
+  )  %>%
+  tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
+  tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
+  tab_spanner(label = "RMSE 95% CI", columns = c(RMSE, RMSE_lb, RMSE_ub)) %>%
+  tab_spanner(label = "EmpSE 95% CI", columns = c(EmpSE, EmpSE_lb, EmpSE_ub)) %>%
+  tab_spanner(label = "Simulation Parameters",
+              columns = c(name,estimand, sens_sigma, n_items, sample_sizes, n)) %>%
+  tab_spanner(label = "Estimator Performance",
+              columns = c(contains("RMSE"),contains("EmpSE"), contains("bias"))) %>%
+  tab_spanner(label = "Credible Interval Performance", columns = c(starts_with("coverage"),"mean_ci_length")) %>%
+  tab_footnote(
+    footnote = html("<b>n<sub>sim</sub></b> = number of simulations completed for this set of simulation parameters.
+              <b>n<sub>obs</sub></b> = number of subjects per simulation.
+              <b>RMSE</b> = Root Mean Squared Error.
+              <b>Coverage</b> = proportion of times the 95% credible intervals include the population reliability, which should be around 95%.
+              <b>estimand</b> = test-retest reliability, i.e. the mean correlation between Bayesian sensitivity point-estimates at t1 and t2, pooled across all sample sizes for a given combination of trial number and sensitivity SD.
+              <b>Mean Length</b> = Mean length of credible or confidence interval.
+              <b>σ<sub>d'</sub></b> = standard deviation of population true sensitivity values across subjects.
+              <b>n<sub>trials</sub></b> = number of trials completed per participant.
+              <b>% DT</b> = Percent of simulations with divergent transitions (applies to Bayesian measurement models only).
+                    "
     )
+  ) %>%
+  tab_style(
+    style = cell_fill(color = "lightgray"),
+    locations = cells_body(
+      columns = everything(),
+      rows = which((name=="RMU"))
+    )
+  ) %>%
+  tab_options(
+    table.width = pct(35)
+  ) %>%
+gt::cols_hide(
+  c(mae,bias_se, mean, ends_with("_se"),mean_testretest_cor_dprime, starts_with("MSE"), contains("low_bfmi"),sum_diag_divergences_binary)
+  )
 
 table_performance_comparison
 
 gtsave(table_performance_comparison, filename = file.path("results_tables","3_study2_performance_comparison.html"))
 
-# Test if estimand is affected by simulation conditions ------------------------
+## Estimator Comparison: RMU vs. Split-Half --------------------------------------
+# Same grouping as "Performance by Condition" above, but kept as a separate table
+# because it feeds `comparison_statistics` (relative EmpSE/RMSE), which is used
+# in the split-violin comparison plot below.
+
+results_table_cleaned_2 =
+  results_table_long %>%
+  group_by(n_items, sens_sigma, name) %>%       # estimand pooled across sample_sizes since it doesn't meaningfully vary with n; k_sigma dropped as it's constant (0.2) in this simulation
+  mutate(
+    estimand = mean(test_retest_reliability)
+  ) %>%
+  ungroup() %>%
+  group_by(n_items, sens_sigma, name, sample_sizes) %>%       # aggregating over sens_mean & wave (t1/t2); performance metrics still broken down by sample size
+  mutate(
+    difference = est - estimand,
+    ci_correct = (lb <= estimand & ub >= estimand),
+    ci_length  = ub - lb
+  ) %>%
+  summarise(
+    n = n(),
+    estimand    = mean(estimand),
+    estimand_sd = sd(test_retest_reliability),
+    mean        = mean(est),
+    bias        = mean(difference),
+    # bias_se     = sqrt(1/(n*(n-1))*sum((est-mean)^2)),                # old: assumes n independent rows
+    bias_se     = cluster_se_mean(difference, sim_id),                  # new: cluster-robust (CR2), clustered by sim_id
+    bias_lb     = bias - qnorm(0.975)*bias_se,
+    bias_ub     = bias + qnorm(0.975)*bias_se,
+    EmpSE       = sd(est),
+    EmpSE_se    = EmpSE/sqrt(2*(n-1)),
+    EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
+    EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
+
+    # Mean Squared Error
+    MSE         = mean((difference)^2),
+    # MSE_se      = sqrt(sum((difference^2-MSE)^2)/(n*(n-1))),          # old: assumes n independent rows
+    MSE_se      = cluster_se_mean(difference^2, sim_id),                # new: cluster-robust (CR2), clustered by sim_id
+    MSE_lb      = MSE - qnorm(0.975)*MSE_se,
+    MSE_ub      = MSE + qnorm(0.975)*MSE_se,
+
+    # Root Mean Squared Error
+    RMSE        = sqrt(MSE),
+    RMSE_lb     = sqrt(MSE_lb),
+    RMSE_ub     = sqrt(MSE_ub),
+
+    mae         = mean(abs(difference)),
+    coverage    = length(which(ci_correct))/length(ci_correct),
+    # coverage_se = sqrt((coverage*(1-coverage))/n),                    # old: assumes n independent Bernoulli trials
+    coverage_se = cluster_se_mean(as.numeric(ci_correct), sim_id),      # new: cluster-robust (CR2), clustered by sim_id
+    coverage_lb = coverage - 1.96*coverage_se,
+    coverage_ub = coverage + 1.96*coverage_se,
+    mean_ci_length = mean(ci_length),
+    perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
+    perc_diag_low_bfmi_binary    = sum(diag_low_bfmi_binary)/n,
+    mean_testretest_cor_dprime   = mean(testretest_cor_dprime)
+  )  %>%
+  ungroup()
+
+comparison_statistics = results_table_cleaned_2 %>%
+  select(
+    name,
+    sample_sizes, sens_sigma, mean,
+    n_items, bias, EmpSE, MSE, n, RMSE
+  ) %>%
+  pivot_wider(
+    names_from = name,
+    values_from = c(mean, bias, EmpSE, MSE, RMSE)
+  ) %>%
+  mutate(
+    relative_precision  = 100*((EmpSE_sh^2 / EmpSE_rmu^2 ) - 1),
+    relative_empse      = 100*((EmpSE_sh   / EmpSE_rmu ) - 1),
+    relative_mse        = 100*((MSE_sh     / MSE_rmu ) - 1),
+    relative_rmse       = 100*((RMSE_sh    / RMSE_rmu ) - 1)
+  )
+
+comparison_statistics %>%
+  print(width = Inf, n = Inf)
+
+# Does the Estimand Vary with Simulation Conditions? ---------------------------------
 
 mod_estimand = results_table |>
   filter(time == "t1") |>
@@ -378,132 +480,48 @@ mod_estimand0 = results_table |>
 anova(mod_estimand)
 anova(mod_estimand0, mod_estimand)
 
-# Test if RMUs are clustered by simulation condition ---------------------------
+## Export as gt tables ----------------------------------------------------------
 
-mod = results_table |> 
+table_estimand_anova = anova(mod_estimand) %>%
+  broom::tidy() %>%
+  gt() %>%
+  tab_header(title = "ANOVA: test-retest reliability ~ sens_sigma * n_items * sample_sizes") %>%
+  fmt_number(columns = c(sumsq, meansq, statistic, p.value), decimals = 3) %>%
+  sub_missing(missing_text = "")
+
+table_estimand_anova
+
+gtsave(table_estimand_anova, filename = file.path("results_tables", "3_study2_estimand_anova.html"))
+
+table_estimand_modelcomparison = anova(mod_estimand0, mod_estimand) %>%
+  broom::tidy() %>%
+  gt() %>%
+  tab_header(title = "Model comparison: sens_sigma * n_items vs. sens_sigma * n_items * sample_sizes") %>%
+  fmt_number(columns = c(rss, sumsq, statistic, p.value), decimals = 3) %>%
+  sub_missing(missing_text = "")
+
+table_estimand_modelcomparison
+
+gtsave(table_estimand_modelcomparison, filename = file.path("results_tables", "3_study2_estimand_modelcomparison.html"))
+
+# Additional Diagnostics --------------------------------------------------------------
+
+## Check if RMU/split-half estimates are clustered by simulation condition -----
+
+mod = results_table |>
   lme4::lmer(rmu_est ~ 1 + (1 | sim_id), data = _)
 
 performance::icc(mod)
 
-mod = results_table |> 
+mod = results_table |>
   lme4::lmer(sh_est ~ 1 + (1 | sim_id), data = _)
 
 performance::icc(mod)
 
-# Comparison of split half and RMU ---------------------------------------------
-
-  # same as above, but we use the simulated test-retest reliability as the TARGET ESTIMAND!
-
-  results_table_cleaned_2 =
-    results_table_long %>%
-    group_by(n_items, sens_sigma, name) %>%       # estimand pooled across sample_sizes since it doesn't meaningfully vary with n; k_sigma dropped as it's constant (0.2) in this simulation
-    mutate(
-      estimand = mean(test_retest_reliability)
-    ) %>%
-    ungroup() %>%
-    group_by(n_items, sens_sigma, name, sample_sizes) %>%       # aggregating over sens_mean & wave (t1/t2); performance metrics still broken down by sample size
-    mutate(
-      difference = est - estimand,
-      ci_correct = (lb <= estimand & ub >= estimand),
-      ci_length  = ub - lb
-    ) %>%
-    summarise(
-      n = n(),
-      estimand    = mean(estimand),
-      estimand_sd = sd(test_retest_reliability),
-      mean        = mean(est),
-      bias        = mean(difference),
-      # bias_se     = sqrt(1/(n*(n-1))*sum((est-mean)^2)),                # old: assumes n independent rows
-      bias_se     = cluster_se_mean(difference, sim_id),                  # new: cluster-robust (CR2), clustered by sim_id
-      bias_lb     = bias - qnorm(0.975)*bias_se,
-      bias_ub     = bias + qnorm(0.975)*bias_se,
-      EmpSE       = sd(est),
-      EmpSE_se    = EmpSE/sqrt(2*(n-1)),
-      EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
-      EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
-
-      # Mean Squared Error
-      MSE         = mean((difference)^2),
-      # MSE_se      = sqrt(sum((difference^2-MSE)^2)/(n*(n-1))),          # old: assumes n independent rows
-      MSE_se      = cluster_se_mean(difference^2, sim_id),                # new: cluster-robust (CR2), clustered by sim_id
-      MSE_lb      = MSE - qnorm(0.975)*MSE_se,
-      MSE_ub      = MSE + qnorm(0.975)*MSE_se,
-
-      # Root Mean Squared Error
-      RMSE        = sqrt(MSE),
-      RMSE_lb     = sqrt(MSE_lb),
-      RMSE_ub     = sqrt(MSE_ub),
-
-      mae         = mean(abs(difference)),
-      coverage    = length(which(ci_correct))/length(ci_correct),
-      # coverage_se = sqrt((coverage*(1-coverage))/n),                    # old: assumes n independent Bernoulli trials
-      coverage_se = cluster_se_mean(as.numeric(ci_correct), sim_id),      # new: cluster-robust (CR2), clustered by sim_id
-      coverage_lb = coverage - 1.96*coverage_se,
-      coverage_ub = coverage + 1.96*coverage_se,
-      mean_ci_length = mean(ci_length),
-      perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
-      perc_diag_low_bfmi_binary    = sum(diag_low_bfmi_binary)/n,
-      mean_testretest_cor_dprime   = mean(testretest_cor_dprime)
-    )  %>%
-    ungroup()
-
-
-comparison_statistics = results_table_cleaned_2 %>%
-    select(
-      name,
-      sample_sizes, sens_sigma, mean,
-      n_items, bias, EmpSE, MSE, n, RMSE
-    ) %>%
-    pivot_wider(
-      names_from = name,
-      values_from = c(mean, bias, EmpSE, MSE, RMSE)
-      # values_from = everything()
-    ) %>%
-    mutate(
-      relative_precision  = 100*((EmpSE_sh^2 / EmpSE_rmu^2 ) - 1),
-      relative_empse      = 100*((EmpSE_sh   / EmpSE_rmu ) - 1),
-      relative_mse        = 100*((MSE_sh     / MSE_rmu ) - 1),
-      relative_rmse       = 100*((RMSE_sh    / RMSE_rmu ) - 1)
-    )
-
-  comparison_statistics%>%
-    print(width = Inf, n = Inf)
-
-
-# Check for any identical seeds ------------------------------------------------
-
-n_check = 100
-n_results <- length(results)
-matches <- matrix(FALSE, nrow=n_check, ncol=n_results)
-
-for(i in 1:n_check) {
-  for(j in (i+1):n_results) {
-    matches[i,j] <- identical(results[[i]]$settings$seed,
-                              results[[j]]$settings$seed)
-  }
-}
-
-# Check if we found any matches
-if(any(matches)) {
-  # Get indices of matches
-  which(matches, arr.ind=TRUE)
-} else {
-  print("No identical RNG states found!")
-}
-
-if (FALSE){
-  identical(results[[1]]$settings$seed,results[[65]]$settings$seed)
-  table(duplicated(results_table$rmu_est))
-  table(duplicated(results_table$sh_est))
-}
-
-# Plots ------------------------------------------------------------------------
-
-
-##### Using raw data -----------------------------------------------------------
+# Plots -------------------------------------------------------------------------------
 
 library(grid)
-#
+
 n_items_labels <- c(
   "20" = "20 Trials",
   "40" = "40 Trials",
@@ -516,6 +534,8 @@ sens_sigma_labels <- c(
   "0.4" = "Sensitivity SD = 0.40"
 )
 
+## RMU violin plot ---------------------------------------------------------------
+
 results_table_cleaned2 = results_table_cleaned %>%
   filter(name == "rmu")
 
@@ -525,7 +545,6 @@ plot_violinplot = results_table_long  %>%
     mutate(
     mean_true_score_model_score_cor2 = mean(test_retest_reliability),
     sample_sizes = factor(sample_sizes),
-    # est = rmu_est
   ) %>%
   ggplot(
     aes(
@@ -543,7 +562,6 @@ plot_violinplot = results_table_long  %>%
   stat_summary(
     fun = mean,
     geom = "point",
-    # y = mean,
     size = 3,
     shape = 3,
     col = "red",
@@ -555,21 +573,11 @@ plot_violinplot = results_table_long  %>%
       y  = estimand,
       x = factor(sample_sizes)
     ),
-    # alpha = .6,
     shape = 1,
     size = 2,
     col = "red",
     stroke = .9
   ) +
-  # annotate(
-  #   "rect",
-  #   xmin = 0,
-  #   xmax = 4,  # Adjust these values to cover just the text area
-  #   ymin = .63,
-  #   ymax = .91,  # Adjust based on your text position
-  #   fill = "white",
-  #   alpha = 0.7
-  # ) +
   geom_rect(
     data = results_table_cleaned2,
     inherit.aes = FALSE,
@@ -587,7 +595,6 @@ plot_violinplot = results_table_long  %>%
     data = results_table_cleaned2,
     aes(
       y = ifelse(sens_sigma == 0.4 & n_items >= 80, 0, 0.89),
-      # y=.8,
       x = factor(sample_sizes),
       label = paste0(
         "B = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", bias)), "\n",
@@ -624,9 +631,7 @@ plot_violinplot
 ggsave(file.path("plots","3_study2_violinplot.png"), plot = plot_violinplot, width = 6.2, height = 7)
 ggsave(file.path("plots","3_study2_violinplot.pdf"), plot = plot_violinplot, width = 6.2, height = 7)
 
-##### Comparison to split half -------------------------------------------------
-# devtools::install_github("psyteachr/introdataviz")
-# library(introdataviz)
+## Comparison violin plot: RMU vs. split-half ------------------------------------
 
 source("https://raw.githubusercontent.com/PsyTeachR/introdataviz/7763afad2cea8fd9fa98acf4e389071cad61e758/R/splitviolin.R")
 
@@ -647,12 +652,9 @@ plot_violinplot_comparison = results_table_long  %>%
       )
   ) +
   geom_split_violin( # sourced from above link!
-    # aes(fill = name),
     width = .95,
-    # fill = "grey80",
     scale = "width",
     trim = TRUE, # If TRUE (default), trim the tails of the violins to the range of the data. If FALSE, don't trim the tails.
-    # position = position_identity()
   ) +
   annotate("rect",
            xmin = .5, xmax = 3.5,  # Adjust these values to cover just the text area
@@ -663,18 +665,15 @@ plot_violinplot_comparison = results_table_long  %>%
     inherit.aes = FALSE,
     aes(
       y = ifelse(sens_sigma > 0 , -.7, -.7),
-      # y=.8,
       x = factor(sample_sizes),
       label = paste0(
         "Relative Empirical Standard Error \n\n",
         "Relative Root Mean Squared Error \n\n"
       )
     ),
-    # vjust = ifelse(results_table_cleaned2[results_table_cleaned2$sample_sizes==500,]$sens_sigma > 0, 0, 1),
     vjust =1,
     hjust = .5,
     size = 2.2,
-    # position = position_nudge(x=0),
     col = "grey20"
   ) +
   geom_text(
@@ -682,7 +681,6 @@ plot_violinplot_comparison = results_table_long  %>%
     inherit.aes = FALSE,
     aes(
       y = ifelse(sens_sigma > 0 , -.7, -.7),
-      # y=.8,
       x = factor(sample_sizes),
       label = paste0(
         "\n", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.1f", relative_empse)), "%\n",
@@ -692,7 +690,6 @@ plot_violinplot_comparison = results_table_long  %>%
     vjust = ifelse(results_table_cleaned2$sens_sigma > 0, 1, 1),
     hjust = .5,
     size = 2.2,
-    # position = position_nudge(x=0),
     col = "grey20"
   ) +
   facet_grid(
@@ -713,8 +710,6 @@ plot_violinplot_comparison = results_table_long  %>%
   ggplot2::theme_bw() +
   theme(
     legend.position = "none",
-    # legend.position = c(.95, .05),
-    # legend.justification = c("right", "bottom")
   ) +
   coord_cartesian(ylim = c(-1.2,.9))
 
@@ -723,13 +718,12 @@ plot_violinplot_comparison
 ggsave(file.path("plots","3_study2_violinplot_comparison.png"), plot = plot_violinplot_comparison, width = 6.2, height = 7)
 ggsave(file.path("plots","3_study2_violinplot_comparison.pdf"), plot = plot_violinplot_comparison, width = 6.2, height = 7)
 
-## Credible / Confidence Intervals ----------------------------------------------
-
+## Credible / confidence interval plots -------------------------------------------
 # Per-simulation 95% interval (credible for RMU, confidence for split-half),
 # ordered by point estimate within each condition, coloured by whether the
 # interval contains the estimand (mean test-retest reliability, pooled across
 # sample_sizes since it doesn't meaningfully vary with n). Mirrors the
-# "Credible Intervals" plot in 2_study1_2_analysis.R.
+# "Credible interval plot" in 2_study1_2_analysis.R.
 
 ci_plot_data = results_table_long %>%
   group_by(n_items, sens_sigma, name) %>%       # estimand pooled across sample_sizes since it doesn't meaningfully vary with n
@@ -781,10 +775,7 @@ plot_ci_splithalf
 ggsave(file.path("plots","3_study2_ci_plot_splithalf.png"), plot = plot_ci_splithalf, width = 9, height = 11)
 ggsave(file.path("plots","3_study2_ci_plot_splithalf.pdf"), plot = plot_ci_splithalf, width = 9, height = 11)
 
-
-
-# DEPRECIATED ------------------------------------------------------------------
-
+# Deprecated / Scratch ------------------------------------------------------------
 
 library(dplyr)
 library(brms)
@@ -795,21 +786,21 @@ sim_data <- results_table_long %>%
     sens_sigma   = factor(sens_sigma),
     sample_sizes = factor(sample_sizes)
   ) %>%
-  select(-contains("diag"), -rowid, -contains("sh"), 
+  select(-contains("diag"), -rowid, -contains("sh"),
          -testretest_cor_dprime, -settings_used, -settings_used_with_npps) %>%
   filter(name == "rmu") %>%
-  group_by(n_items, sens_sigma) %>%        
+  group_by(n_items, sens_sigma) %>%
   mutate(
     estimand = mean(test_retest_reliability)
   ) %>%
   ungroup() %>%
-  group_by(n_items, sens_sigma, sample_sizes) %>%        
+  group_by(n_items, sens_sigma, sample_sizes) %>%
   mutate(
     difference = est - estimand,
     ci_correct = (lb <= estimand & ub >= estimand),
     ci_length  = ub - lb
   ) %>%
-  ungroup() 
+  ungroup()
 
 
 bform <- bf(
@@ -821,10 +812,6 @@ fit_var <- brm(
   formula = bform,
   data = sim_data,
   family = gaussian(),
-  # algorithm = "meanfield", 
-  # tol_rel_obj = 0.001,       # Convergence tolerance (optional, default is 0.01)
-  # iter = 1E7,
-  # control = list(adapt_delta = 0.95),
   cores = 2,
   chains = 2,
   iter = 2000,
@@ -834,9 +821,6 @@ fit_var <- brm(
 
 summary(fit_var)
 
-
-# install.packages("emmeans")
 # Calculate the grand marginal mean across all conditions
 overall_bias <- emmeans::emmeans(fit_var, ~ 1)
-# View the result
 summary(overall_bias)
