@@ -23,9 +23,11 @@
 #! container.
 #! ---------------------------------------------------------------------------
 
-#! NOTE: verify the module name for singularity/apptainer on CREATE, e.g.
-#! `module avail singularity` or `module avail apptainer`, and update below:
-module load singularity
+#! Singularity is pre-installed on CREATE compute nodes - no module load
+#! needed (unlike Rosalind, which requires `module load apps/singularity/...`).
+#! It is NOT available on the login nodes, so this must run as a batch job
+#! or from within an interactive compute-node session.
+#! Docs: https://docs.er.kcl.ac.uk/CREATE/software/singularity/
 
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
@@ -35,9 +37,8 @@ export VECLIB_MAXIMUM_THREADS=1
 export RUN_REP="100"
 export SEED_ENV="101"
 
-#! Path to the singularity image in your home folder - adjust filename/path
-#! if it differs:
-SIF="$HOME/bignardig_tidyverse461.sif"
+#! Path to the singularity image (lives alongside this script in the repo):
+SIF="$SLURM_SUBMIT_DIR/tidyverse461.sif"
 
 #! sbatch's default working directory is the one it was submitted from:
 workdir="$SLURM_SUBMIT_DIR"
