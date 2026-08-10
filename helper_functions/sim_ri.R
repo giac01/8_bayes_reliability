@@ -1,13 +1,15 @@
 sim_ri = function(
-  n_pps, 
+  n_pps,
   n_trials,
   init_beliefs,
   learning_rate_mean,
   learning_rate_sd,
-  decision_noise_mean, 
+  decision_noise_mean,
   decision_noise_sd,
-  reward_outcome, 
+  reward_outcome,
   prob_real,
+  learning_rate_direct  = NULL,  # Enter specific values of learning_rate and decision_noise here
+  decision_noise_direct = NULL,
   save_beliefs = TRUE
 ){
   # n_pps               = 500
@@ -19,13 +21,21 @@ sim_ri = function(
   # decision_noise_mean = 1
   # decision_noise_sd   = .3
 
-  
+
   if (learning_rate_sd==0){learning_rate = rep(learning_rate_mean, n_pps)} else{
     learning_rate  = g_normaluniform(n_pps, learning_rate_mean, learning_rate_sd)
   }
 
   if (decision_noise_sd==0){decision_noise = rep(decision_noise_mean, n_pps)} else{
     decision_noise = g_normaluniform(n_pps, mu = decision_noise_mean/5, sd = decision_noise_sd/5)*5
+  }
+
+  if (!is.null(learning_rate_direct)){
+    learning_rate = learning_rate_direct
+  }
+
+  if (!is.null(decision_noise_direct)){
+    decision_noise = decision_noise_direct
   }
 
   # Initialise outcome matrix, choice matrix, and beliefs matrix 

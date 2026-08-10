@@ -9,10 +9,7 @@ print(Sys.getenv())
 print(run_rep_env)
 print(seed_env)
 
-cmdstanr::set_cmdstan_path(path = "/home/gb424/.cmdstan/cmdstan-2.34.1")
-
-#reliability() function:
-source("https://raw.githubusercontent.com/giac01/gbtoolbox/cc3b88b03494425207224f1182dc01f5dcee0d26/R/reliability.R")
+cmdstanr::set_cmdstan_path(path = "/home/giaco/.cmdstan/cmdstan-2.39.0") # THIS NEEDS UPDATNG TO LOCATION OF CMDSTAN INSTALL ON HPC CLUSTER
 
 # Compile stan model -----------------------------------------------------------
 
@@ -25,11 +22,11 @@ mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 
 # Example of creating a list of all combinations
 params_list <- expand.grid(
-  n_pps               = c(70,140),
-  n_trials            = c(100,200,400), 
+  n_pps               = c(60,120),
+  n_trials            = c(90,180,320), 
   # n_trials          = c(200),
   learning_rate_mean  = 0.2,
-  learning_rate_sd    = c(0, .20, .4),
+  learning_rate_sd    = c(0, .25, .5),
   decision_noise_mean = .75,
   decision_noise_sd   = .25,
   prob_real           = .75,    # probability of outcome 2 
@@ -46,12 +43,12 @@ print(seed_env)
 # Run code in parallel using future --------------------------------------------
 print(availableCores())
 
- future::plan(future::multisession(workers = availableCores()))
+future::plan(future::multicore(workers = availableCores()))
 # future::plan(future::multisession(workers =  8))
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = seed_env, 1:nrow(params_list), function(i) {
-  run_ri_sim(
+  run_study3_simulation(
     i                  = i,
     n_pps              = params_list$n_pps[i], 
     n_trials           = params_list$n_trials[i], 
@@ -69,18 +66,16 @@ results <- future.apply::future_lapply(future.seed = seed_env, 1:nrow(params_lis
 )
 
 time_b = Sys.time()
-print(time_b - time_a)
-
-print("Here3321")
 
 future::plan(future::sequential())
 
 warnings()
 
-print("Here11242")
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
 filename <- paste0("study3_results_seed_", seed_env ,"_",timestamp,".rds")
-print("Here11212322")
+
 print(filename)
-saveRDS(results, file = file.path("results",filename))
+print(time_b - time_a)
+
+saveRDS(results, file = file.path("results","study3_results", filename))

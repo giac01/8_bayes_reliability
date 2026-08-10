@@ -64,7 +64,7 @@ future::plan(future::multisession(workers = availableCores()))
 
 time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = seed_env, 1:nrow(params_list), function(i) {
-  run_ri_sim(
+  run_study3_simulation(
     i                  = i,
     n_pps              = params_list$n_pps[i], 
     n_trials           = params_list$n_trials[i], 

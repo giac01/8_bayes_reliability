@@ -25,6 +25,9 @@ Unreliable measurement can lead to lower statistical power, attenuated effect si
 
 This project runs in the Docker container **`bignardig/tidyverse461:v1`**, based on **R version 4.6.1**.
 
+> [!NOTE]
+> Study 3 (`4_study3_*`) requires **`bignardig/tidyverse461:v3`** instead, which adds the `libtbb-dev` system library needed to run its code.
+
 > [!WARNING]
 > This repository is actively being updated. Scripts, file names, and structure are being reorganized and may change without notice — expect breaking changes until this warning is removed.
 

@@ -6,8 +6,8 @@ export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
-export RUN_REP="150"                                                             # 200 took 12 hours
-export SEED_ENV="4"
+export RUN_REP="250"                                                             # 200 took 12 hours
+export SEED_ENV="6"
 
 docker run --rm \
   -v /home/giaco:/home/giaco \
