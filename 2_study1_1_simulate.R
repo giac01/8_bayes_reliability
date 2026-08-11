@@ -6,7 +6,8 @@ run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))                     
 seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))                    # Random Number Seed
 
 # Compile stan model -----------------------------------------------------------
-cmdstanr::set_cmdstan_path(path = "/home/giaco/.cmdstan/cmdstan-2.39.0") # THIS NEEDS UPDATNG TO LOCATION OF CMDSTAN INSTALL ON HPC CLUSTER
+# cmdstanr::set_cmdstan_path(path = "/home/giaco/.cmdstan/cmdstan-2.39.0")      # Desktop/Docker path - uncomment (and comment out the line below) to run locally
+cmdstanr::set_cmdstan_path(path = "/users/k2583181/.cmdstan/cmdstan-2.39.0")     # KCL CREATE HPC path
 
 mod <- cmdstan_model(file.path("stan_models","stan_inequiv_factor_model_v16.stan"))
 

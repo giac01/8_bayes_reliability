@@ -5,7 +5,8 @@ source("1_setup.R")
 run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = NA))                     # Number of times to repeat the simulation
 seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = NA))                    # Random Number Seed
 
-cmdstanr::set_cmdstan_path(path = "/home/giaco/.cmdstan/cmdstan-2.39.0") # THIS NEEDS UPDATNG TO LOCATION OF CMDSTAN INSTALL ON HPC CLUSTER
+# cmdstanr::set_cmdstan_path(path = "/home/giaco/.cmdstan/cmdstan-2.39.0")      # Desktop/Docker path - uncomment (and comment out the line below) to run locally
+cmdstanr::set_cmdstan_path(path = "/users/k2583181/.cmdstan/cmdstan-2.39.0")     # KCL CREATE HPC path
 
 # Compile stan model -----------------------------------------------------------
 
