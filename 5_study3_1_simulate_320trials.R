@@ -22,20 +22,21 @@ mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 
 
 # Example of creating a list of all combinations
-# NB: n_trials=320 is handled separately by 5_study3_1_simulate_320trials.R -
-# a single simulation at that size can take >12h to fit (parallel_chains=1,
-# so extra cores don't speed up one simulation), which was blowing through
-# this job's time limit and losing the whole batch's results.
+# NB: n_trials=320 only (split out from 4_study3_1_simulate.R) - a single
+# simulation at this size can take >12h to fit (parallel_chains=1, so extra
+# cores don't speed up one simulation). Loops over all rows exactly like
+# 4_study3_1_simulate.R; the slurm script requests enough cores to run all
+# rows concurrently rather than in sequence, to stay within the time limit.
 params_list <- expand.grid(
   n_pps               = c(60,120),
-  n_trials            = c(90,180),
+  n_trials            = 320,
   learning_rate_mean  = 0.2,
   learning_rate_sd    = c(0, .25, .5),
   decision_noise_mean = .75,
   decision_noise_sd   = .25,
-  prob_real           = .75,    # probability of outcome 2 
-  run_rep = 1:run_rep_env  
-) 
+  prob_real           = .75,    # probability of outcome 2
+  run_rep = 1:run_rep_env
+)
 
 # Note that above aren't the learning rate sd, to work it out use:
 # sd(g_normaluniform(400000000, .5, learning_rate_sd)
@@ -54,8 +55,8 @@ time_a = Sys.time()
 results <- future.apply::future_lapply(future.seed = seed_env, 1:nrow(params_list), function(i) {
   run_study3_simulation(
     i                  = i,
-    n_pps              = params_list$n_pps[i], 
-    n_trials           = params_list$n_trials[i], 
+    n_pps              = params_list$n_pps[i],
+    n_trials           = params_list$n_trials[i],
     learning_rate_mean = params_list$learning_rate_mean[i],
     learning_rate_sd   = params_list$learning_rate_sd[i],
     decision_noise_mean= params_list$decision_noise_mean[i],

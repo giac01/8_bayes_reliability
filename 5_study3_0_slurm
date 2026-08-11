@@ -1,0 +1,70 @@
+#!/bin/bash -l
+#!
+#! SLURM ARRAY job script for King's College London CREATE HPC cluster
+#! Docs: https://docs.er.kcl.ac.uk/CREATE/running_jobs/
+#!
+#! Runs the n_trials=320 condition, split out from the main study3 array job
+#! because a single simulation at this size can take >12h to fit
+#! (parallel_chains=1, so extra cores don't speed up one simulation) - it was
+#! blowing through the main job's time limit and losing the whole batch.
+#! 5_study3_1_simulate_320trials.R loops over its full params_list exactly
+#! like the main script (n_pps x learning_rate_sd x RUN_REP rows, n_trials
+#! fixed at 320), on a single core - with 6 rows x 12h+ each, a single task
+#! can take a long time; --time below is set generously to allow for this.
+#!
+
+#SBATCH --job-name=study3_array_320trials
+#SBATCH --partition=cpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=8G
+#! Single sims here have been observed to run >12h, and this task runs 6 of
+#! them in sequence on 1 core (up to ~72h worst case) - set to CREATE's 48h
+#! batch cap, the max available without requesting Long Partition Access.
+#! Watch the first run with `seff`/`sacct`; if it hits TIMEOUT you'll need
+#! either Long Partition Access or to raise --cpus-per-task so rows run
+#! concurrently instead of in sequence.
+#SBATCH --time=48:00:00
+#! Each array task is an independent full pass over params_list (RUN_REP=1
+#! rep of all 6 param combos) with its own seed - raise the range for more
+#! reps, or bump RUN_REP per task and adjust SEED_ENV/analysis accordingly:
+#SBATCH --array=1-3
+#! Array jobs with BEGIN/END mail-type would send far too many emails - FAIL only:
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-user=k2583181@kcl.ac.uk
+#SBATCH --output=/scratch/users/%u/%A_%a.out
+
+#! ---------------------------------------------------------------------------
+#! IMPORTANT - compile the Stan model once before first use of this script
+#! (skip if you've already warmed the cache via the main array job):
+#!
+#!   srun -p cpu --time 20 --pty /bin/bash -l
+#!   singularity exec tidyverse461.sif Rscript -e 'source("1_setup.R"); cmdstanr::set_cmdstan_path(path = "/users/k2583181/.cmdstan/cmdstan-2.39.0"); cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))'
+#!   exit
+#! ---------------------------------------------------------------------------
+
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+
+export RUN_REP="1"
+export SEED_ENV=$((2000 + SLURM_ARRAY_TASK_ID))
+
+#! Path to the singularity image (lives alongside this script in the repo):
+SIF="$SLURM_SUBMIT_DIR/tidyverse461.sif"
+
+#! sbatch's default working directory is the one it was submitted from:
+workdir="$SLURM_SUBMIT_DIR"
+cd "$workdir" || exit 1
+
+echo -e "JobID: $SLURM_JOB_ID (array task $SLURM_ARRAY_TASK_ID of $SLURM_ARRAY_TASK_COUNT)\n======"
+echo "Time: $(date)"
+echo "Running on node: $(hostname)"
+echo "Working directory: $(pwd)"
+echo "SEED_ENV: $SEED_ENV"
+
+echo -e "\nExecuting command:\n==================\nsingularity exec $SIF Rscript 5_study3_1_simulate_320trials.R\n"
+
+singularity exec "$SIF" Rscript 5_study3_1_simulate_320trials.R
