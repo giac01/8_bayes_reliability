@@ -25,7 +25,7 @@ mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 params_list <- expand.grid(
   n_pps               = c(60,120),
   n_trials            = c(90,180,320), 
-  # n_trials          = c(200),
+  # n_trials          = c(320),
   learning_rate_mean  = 0.2,
   learning_rate_sd    = c(0, .25, .5),
   decision_noise_mean = .75,
