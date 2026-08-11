@@ -73,3 +73,8 @@ Simulates choice/outcome sequences from a Rescorla-Wagner-style reinforcement-le
 - `5_study3b_1_simulate.R` and its `_0_slurm_himem` variants — a variational-inference version of the same design (for larger sample sizes where full MCMC is too slow)
 
 Simulation functions used: **`sim_ri`** (simulates trial-by-trial choices/outcomes from learning rate, decision noise, and reward probabilities, using **`g_normaluniform`** to draw individual differences in learning rate/decision noise and **`g_softmax`** to convert beliefs into choice probabilities), **`run_ri_sim`** (orchestrates simulation + full-MCMC Stan fit + reliability estimation for Study 3), **`run_ri_sim_variational`** (same, but fits via Stan's variational inference, used in Study 3b)
+
+Command to sync data from hpc:  
+
+`rsync -avzP k2583181@create:/users/k2583181/8_bayes_reliability/results/ /home/giaco/Downloads/hpc_results/`
+

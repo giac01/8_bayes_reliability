@@ -78,7 +78,7 @@ warnings()
 
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
-filename <- paste0("study3_results_seed_", seed_env ,"_",timestamp,".rds")
+filename <- paste0("study3_results_320trials_seed_", seed_env ,"_",timestamp,".rds")
 
 print(filename)
 print(time_b - time_a)

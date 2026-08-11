@@ -50,7 +50,7 @@ export MKL_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 
 export RUN_REP="1"
-export SEED_ENV=$((2000 + SLURM_ARRAY_TASK_ID))
+export SEED_ENV=$((1000 + SLURM_ARRAY_TASK_ID))
 
 #! Path to the singularity image (lives alongside this script in the repo):
 SIF="$SLURM_SUBMIT_DIR/tidyverse461.sif"
