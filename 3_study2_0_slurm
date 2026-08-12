@@ -15,9 +15,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=6G
-#SBATCH --time=08:00:00
-#SBATCH --array=1-2
+#SBATCH --mem=4G
+#SBATCH --time=01:30:00
+#SBATCH --array=1-1000
 #! Array jobs with BEGIN/END mail-type would send ~100+ emails - FAIL only:
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=k2583181@kcl.ac.uk

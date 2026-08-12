@@ -18,18 +18,18 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=8G
+#SBATCH --mem=2G
 #! Single sims here have been observed to run >12h, and this task runs 6 of
 #! them in sequence on 1 core (up to ~72h worst case) - set to CREATE's 48h
 #! batch cap, the max available without requesting Long Partition Access.
 #! Watch the first run with `seff`/`sacct`; if it hits TIMEOUT you'll need
 #! either Long Partition Access or to raise --cpus-per-task so rows run
 #! concurrently instead of in sequence.
-#SBATCH --time=48:00:00
+#SBATCH --time=12:00:00
 #! Each array task is an independent full pass over params_list (RUN_REP=1
 #! rep of all 6 param combos) with its own seed - raise the range for more
 #! reps, or bump RUN_REP per task and adjust SEED_ENV/analysis accordingly:
-#SBATCH --array=1-3
+#SBATCH --array=101-1000
 #! Array jobs with BEGIN/END mail-type would send far too many emails - FAIL only:
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=k2583181@kcl.ac.uk
