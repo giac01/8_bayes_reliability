@@ -8,6 +8,13 @@
 #! Single-core tasks schedule into small idle gaps far more easily - see
 #! `sinfo -p cpu -N -o "%N %C %t"` for how packed the cluster typically is.
 #!
+#! Target is 250 total reps (seeds 1001-1250, i.e. task ids 1-250). The
+#! --array list below is not 1-250: it's exactly the task ids with no
+#! results/study3_results/study3_results_seed_*.rds file yet, as of the
+#! snapshot taken 2026-08-12 (some ids in 1-100 never produced output, and
+#! 101-250 were never submitted). Re-derive it from a fresh `ls` before
+#! resubmitting again, since some of these ids may complete in the meantime.
+#!
 
 #SBATCH --job-name=study3_array
 #SBATCH --partition=cpu
@@ -16,7 +23,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
 #SBATCH --time=12:00:00
-#SBATCH --array=1-100
+#SBATCH --array=1-2,6-10,13-15,21-22,59-74,76-250
 #! Array jobs with BEGIN/END mail-type would send ~100+ emails - FAIL only:
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=k2583181@kcl.ac.uk
@@ -24,9 +31,9 @@
 
 #! ---------------------------------------------------------------------------
 #! Each array task runs 4_study3_1_simulate.R with RUN_REP=1 (one rep of all
-#! 18 param combinations = 18 sims/task) and a task-specific seed. 100 tasks
-#! x 1 rep = the same total sims as the old RUN_REP=100 single-job version.
-#! Each task writes its own results/study3_results/*.rds file (existing
+#! 18 param combinations = 18 sims/task) and a task-specific seed. The array
+#! below covers only the missing task ids so the total across all submissions
+#! reaches 250 reps. Each task writes its own results/study3_results/*.rds file (existing
 #! seed+timestamp filename already prevents collisions), and
 #! 4_study3_2_analysis.R already reads/combines every matching file in that
 #! folder - no merge step needed.

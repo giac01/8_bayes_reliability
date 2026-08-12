@@ -28,8 +28,13 @@
 #SBATCH --time=12:00:00
 #! Each array task is an independent full pass over params_list (RUN_REP=1
 #! rep of all 6 param combos) with its own seed - raise the range for more
-#! reps, or bump RUN_REP per task and adjust SEED_ENV/analysis accordingly:
-#SBATCH --array=101-1000
+#! reps, or bump RUN_REP per task and adjust SEED_ENV/analysis accordingly.
+#! Target is 250 total reps (seeds 1001-1250, i.e. task ids 1-250). The list
+#! below is not 1-250: it's exactly the task ids with no
+#! results/study3_results/study3_results_320trials_seed_*.rds file yet, as of
+#! the snapshot taken 2026-08-12. Re-derive it from a fresh `ls` before
+#! resubmitting again, since some of these ids may complete in the meantime.
+#SBATCH --array=43,48-49,60,62,76,85,101-250
 #! Array jobs with BEGIN/END mail-type would send far too many emails - FAIL only:
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=k2583181@kcl.ac.uk
