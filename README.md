@@ -81,7 +81,9 @@ See all completed jobs last 30 days
 
 sacct -S now-30days --name=study3_array_320trials --format=JobID,JobName,State,ExitCode,Elapsed,AllocCPUS
 
+sacct -S now-30days --name=study3_array --format=JobID,JobName%25,State,Elapsed,ReqMem,MaxRSS%12 --units=G | grep "COMPLETED" | grep "batch"
 Command to sync data from hpc:  
 
-`rsync -avzP k2583181@create:/users/k2583181/8_bayes_reliability/results/ /home/giaco/Downloads/hpc_results/`
+rsync -avzP k2583181@create:/users/k2583181/8_bayes_reliability/results/ /home/giaco/Downloads/hpc_results/
 
+rsync -av --ignore-existing ~/Downloads/hpc_results/ ~/GitHub/8_bayes_reliability/results/
