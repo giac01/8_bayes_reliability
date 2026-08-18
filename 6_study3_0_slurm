@@ -1,0 +1,112 @@
+#!/bin/bash -l
+#!
+#! SLURM ARRAY job script for King's College London CREATE HPC cluster
+#! Docs: https://docs.er.kcl.ac.uk/CREATE/running_jobs/
+#!
+#! Runs the n_pps=240 condition for study3 (forgotten from the original
+#! 4_study3_1_simulate.R/5_study3_1_simulate_320trials.R sweep, which only
+#! covered n_pps in {60,120}). n_pps=240 is double the largest n_pps tried so
+#! far, and even a single n_trials=320 simulation at n_pps<=120 was already
+#! observed to sometimes take >12h to fit (parallel_chains=1, so extra cores
+#! don't speed up one simulation - see 5_study3_0_slurm) and lose the whole
+#! task's results to a timeout when several such rows were looped in one task.
+#!
+#! So unlike 4_/5_, every array task here is exactly ONE simulation - one
+#! (n_trials, learning_rate_sd, rep) triple - instead of a loop over several
+#! rows. combo_grid in 6_study3_1_simulate_240pps.R has 9 rows:
+#!   combo 1-3: n_trials=90,  learning_rate_sd = 0, .25, .5
+#!   combo 4-6: n_trials=180, learning_rate_sd = 0, .25, .5
+#!   combo 7-9: n_trials=320, learning_rate_sd = 0, .25, .5
+#! Target is 250 reps per combo (matching the 60/120 conditions). Task ids
+#! are laid out REP-MAJOR: consecutive ids cycle through the 9 combos, i.e.
+#! id = (rep-1)*9 + combo, decoded as
+#!   combo = (id-1) % 9 + 1     rep = (id-1) / 9 + 1
+#! (task 1 = combo 1 rep 1, task 9 = combo 9 rep 1, task 10 = combo 1 rep 2,
+#! ... task 2250 = combo 9 rep 250). The point of this layout is that any
+#! prefix range 1-(9*N) is exactly the first N reps of EVERY combo, which
+#! makes staged submission trivial:
+#!   sbatch --array=1-9 6_study3_0_slurm         -> 1 rep of every combo (pilot)
+#!   sbatch --array=1-45 6_study3_0_slurm        -> first 5 reps of every combo
+#!   sbatch --array=46-2250%100 6_study3_0_slurm -> the rest
+#! NB: this mapping must stay fixed across all submissions of this sweep -
+#! changing it would make already-run task ids mean different simulations.
+#! Each task's rep maps to seed 1000+rep (1001-1250), same seed range reused
+#! across combos - fine since each task calls set.seed() independently and
+#! output filenames (which include n_trials/learning_rate_sd/seed) can't
+#! collide across combos.
+#!
+#! This is a much bigger array (2250 tasks) than previous study3 submissions
+#! (max 250 before). The %100 throttle below caps concurrently *running*
+#! tasks so this doesn't try to grab the whole partition at once - all 2250
+#! still get scheduled, just not simultaneously. Adjust to your cluster's
+#! fair-use norms; check `scontrol show config | grep MaxArraySize` if sbatch
+#! rejects the array as too large and split the submission if needed.
+#!
+#! --time is set generously (24h) since we have no timing data yet for
+#! n_pps=240 - watch the first few tasks of each n_trials tier with
+#! `seff`/`sacct` (ids 1-3 are the three 90-trial combos, 4-6 the 180-trial,
+#! 7-9 the 320-trial) and adjust. CREATE's cap without Long Partition Access
+#! is 48h; if 24h isn't enough for the n_trials=320 combos (combos 7-9, i.e.
+#! every third id starting at 7, 8 and 9), resubmit just those using slurm's
+#! start-end:step syntax - three submissions with --time=48:00:00:
+#!   sbatch --time=48:00:00 --array=7-2250:9 6_study3_0_slurm   (combo 7)
+#!   sbatch --time=48:00:00 --array=8-2250:9 6_study3_0_slurm   (combo 8)
+#!   sbatch --time=48:00:00 --array=9-2250:9 6_study3_0_slurm   (combo 9)
+#! or request Long Partition Access.
+#!
+#! --mem is bumped to 4G (from 2G in 4_/5_) since n_pps=240 roughly doubles
+#! the number of subject-level parameters in the hierarchical stan fit -
+#! also unverified, watch `seff` and adjust.
+#!
+
+#SBATCH --job-name=study3_240pps_array
+#SBATCH --partition=cpu
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --time=24:00:00
+#SBATCH --array=1-18
+#! Array jobs with BEGIN/END mail-type would send far too many emails - FAIL only:
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-user=k2583181@kcl.ac.uk
+#SBATCH --output=/scratch/users/%u/%A_%a.out
+
+#! ---------------------------------------------------------------------------
+#! IMPORTANT - compile the Stan model once before first use of this script
+#! (skip if you've already warmed the cache via an earlier study3 array job):
+#!
+#!   srun -p cpu --time 20 --pty /bin/bash -l
+#!   singularity exec tidyverse461.sif Rscript -e 'source("1_setup.R"); cmdstanr::set_cmdstan_path(path = "/users/k2583181/.cmdstan/cmdstan-2.39.0"); cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))'
+#!   exit
+#!
+#! Then submit this array job as normal: sbatch 6_study3_0_slurm
+#! ---------------------------------------------------------------------------
+
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export VECLIB_MAXIMUM_THREADS=1
+
+#! Map this array task to one combo (1-9) and one rep (1-250) - rep-major
+#! layout, see the header comment above.
+export COMBO_ENV=$(( (SLURM_ARRAY_TASK_ID - 1) % 9 + 1 ))  # % is modulo - it gives you only the remainder. 
+export REP_ENV=$(( (SLURM_ARRAY_TASK_ID - 1) / 9 + 1 ))    # / is integer division - it divides and throws away the remainder
+export SEED_ENV=$((1000 + REP_ENV))
+
+#! Path to the singularity image (lives alongside this script in the repo):
+SIF="$SLURM_SUBMIT_DIR/tidyverse461.sif"
+
+#! sbatch's default working directory is the one it was submitted from:
+workdir="$SLURM_SUBMIT_DIR"
+cd "$workdir" || exit 1
+
+echo -e "JobID: $SLURM_JOB_ID (array task $SLURM_ARRAY_TASK_ID of $SLURM_ARRAY_TASK_COUNT)\n======"
+echo "Time: $(date)"
+echo "Running on node: $(hostname)"
+echo "Working directory: $(pwd)"
+echo "COMBO_ENV: $COMBO_ENV  REP_ENV: $REP_ENV  SEED_ENV: $SEED_ENV"
+
+echo -e "\nExecuting command:\n==================\nsingularity exec $SIF Rscript 6_study3_1_simulate_240pps.R\n"
+
+singularity exec "$SIF" Rscript 6_study3_1_simulate_240pps.R

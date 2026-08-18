@@ -1,12 +1,12 @@
 # Load Stuff -------------------------------------------------------------------
 source("1_setup.R")
 
-# Sys.setenv(RUN_REP = 2, SEED_ENV = 1)                                         # NB: this code is designed to be run in a HPC environment, where the values of these environment variables are set in the slurm job scripts. For testing locally, it can be set here
-run_rep_env = as.numeric(Sys.getenv("RUN_REP", unset = "NA"))                   # Number of times to repeat the simulation
-seed_env    = as.numeric(Sys.getenv("SEED_ENV", unset = "NA"))                  # Random Number Seed
+# Sys.setenv(COMBO_ENV = 1, SEED_ENV = 1001)                                    # NB: this code is designed to be run in a HPC environment, where the values of these environment variables are set in the slurm job script (6_study3_0_slurm). For testing locally, it can be set here.
+combo_env = as.numeric(Sys.getenv("COMBO_ENV", unset = "NA"))                   # Which of the 9 n_trials x learning_rate_sd combos to run this task (1-9) - see combo_grid below
+seed_env  = as.numeric(Sys.getenv("SEED_ENV", unset = "NA"))                    # Random number seed for this single simulation
 
 print(Sys.getenv())
-print(run_rep_env)
+print(combo_env)
 print(seed_env)
 
 # cmdstanr::set_cmdstan_path(path = "/home/giaco/.cmdstan/cmdstan-2.39.0")      # Desktop/Docker path - uncomment (and comment out the line below) to run locally
@@ -16,70 +16,69 @@ cmdstanr::set_cmdstan_path(path = "/users/k2583181/.cmdstan/cmdstan-2.39.0")    
 
 mod <- cmdstan_model(file.path("stan_models","stan_two_arm_bandit_v6.stan"))
 
-# Create Parameter Table ---------------------------------------------------
+# Select this task's single param combo -----------------------------------------
 
-# g_normaluniform(100000, .2, .4) %>% hist()
+# Unlike 4_study3_1_simulate.R/5_study3_1_simulate_320trials.R, each array task
+# here runs exactly ONE simulation instead of looping over several rows/reps.
+# n_pps=240 is double the largest n_pps tried so far in study3, and even a
+# single n_trials=320 simulation at n_pps<=120 was already observed to
+# sometimes take >12h to fit (see 5_study3_1_simulate_320trials.R) - looping
+# multiple rows per task risks losing the whole task's results to a timeout,
+# so 6_study3_0_slurm gives every (n_trials, learning_rate_sd, rep) triple its
+# own array task. combo_env (1-9) selects a row below; SEED_ENV both seeds the
+# RNG and identifies the rep. The slurm script derives both from
+# SLURM_ARRAY_TASK_ID.
+combo_grid <- data.frame(
+  n_trials         = c(90, 90, 90,   180, 180, 180,   320, 320, 320),
+  learning_rate_sd = c(0, .25, .5,   0, .25, .5,       0, .25, .5)
+)
 
+if (is.na(combo_env) || combo_env < 1 || combo_env > nrow(combo_grid)) {
+  stop("COMBO_ENV must be an integer between 1 and ", nrow(combo_grid))
+}
+if (is.na(seed_env)) stop("SEED_ENV is not set")
 
-# Example of creating a list of all combinations
-# NB: n_trials=320 is handled separately by 5_study3_1_simulate_320trials.R -
-# a single simulation at that size can take >12h to fit (parallel_chains=1,
-# so extra cores don't speed up one simulation), which was blowing through
-# this job's time limit and losing the whole batch's results.
-params_list <- expand.grid(
-  n_pps               = c(240),
-  n_trials            = c(90,180,320),
-  learning_rate_mean  = 0.2,
-  learning_rate_sd    = c(0, .25, .5),
-  decision_noise_mean = .75,
-  decision_noise_sd   = .25,
-  prob_real           = .75,    # probability of outcome 2 
-  run_rep = 1:run_rep_env  
-) 
+this_row <- combo_grid[combo_env, ]
 
-# Note that above aren't the learning rate sd, to work it out use:
-# sd(g_normaluniform(400000000, .5, learning_rate_sd)
+print(this_row)
 
-print(params_list)
-print(run_rep_env)
-print(seed_env)
+# Run simulation -----------------------------------------------------------
 
-# Run code in parallel using future --------------------------------------------
-print(availableCores())
-
-future::plan(future::multicore(workers = availableCores()))
-# future::plan(future::multisession(workers =  8))
+set.seed(seed_env)
 
 time_a = Sys.time()
-results <- future.apply::future_lapply(future.seed = seed_env, 1:nrow(params_list), function(i) {
-  run_study3_simulation(
-    i                  = i,
-    n_pps              = params_list$n_pps[i], 
-    n_trials           = params_list$n_trials[i], 
-    learning_rate_mean = params_list$learning_rate_mean[i],
-    learning_rate_sd   = params_list$learning_rate_sd[i],
-    decision_noise_mean= params_list$decision_noise_mean[i],
-    decision_noise_sd  = params_list$decision_noise_sd[i],
-    prob_real          = params_list$prob_real[i],
-    reward_outcome     = c(-1, 2),
-    init_beliefs       = c(0,0),
-    additional_tests = TRUE,
-    save_results = FALSE
-  )
-}
+
+result <- run_study3_simulation(
+  i                   = seed_env,
+  n_pps               = 240,
+  n_trials            = this_row$n_trials,
+  learning_rate_mean  = 0.2,
+  learning_rate_sd    = this_row$learning_rate_sd,
+  decision_noise_mean = .75,
+  decision_noise_sd   = .25,
+  prob_real           = .75,    # probability of outcome 2
+  reward_outcome      = c(-1, 2),
+  init_beliefs        = c(0,0),
+  additional_tests    = TRUE,
+  save_results        = FALSE
 )
 
 time_b = Sys.time()
 
-future::plan(future::sequential())
-
 warnings()
 
-
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")  # This will create a timestamp in the format "YYYYMMDD_HHMMSS"
-filename <- paste0("study3_results_seed_", seed_env ,"_",timestamp,".rds")
+filename <- paste0(
+  "study3_results_240pps_ntrials", this_row$n_trials,
+  "_lrsd", this_row$learning_rate_sd,
+  "_seed_", seed_env, "_", timestamp, ".rds"
+)
 
 print(filename)
 print(time_b - time_a)
 
-saveRDS(results, file = file.path("results","study3_results", filename))
+# Wrapped in a list so each file's shape matches the per-file "list of
+# simulation results" that 4_study3_2_analysis.R expects (it reads every file,
+# then flattens one level with do.call("c", ...)), even though this file holds
+# only a single simulation.
+saveRDS(list(result), file = file.path("results","study3_results", filename))
