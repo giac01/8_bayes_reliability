@@ -56,6 +56,24 @@ bandit_datalist<-function(data){
   return(out)
 }
 
+bandit4arm_df<-function(data, ids = NULL){
+  # Builds the row-per-trial data.frame hBayesDM::bandit4arm_4par() expects (columns: subjID,
+  # choice, gain, loss) from the raw per-trial export (id, trial_nr, is_gain, is_loss, response)
+  # -- unlike bandit_datalist() above, bandit4arm_4par() has no trial_nr column of its own, it
+  # infers each subject's trial sequence purely from row order, so rows are arranged by
+  # (id, trial_nr) before being handed off. Repeated trial_nr values in the raw exports are
+  # resolved the same way as bandit_datalist()'s de-duplication: keep the last recorded row for
+  # that trial. (this is only an issue with three trials for pps 412)
+  if (!is.null(ids)) data <- data %>% filter(id %in% ids)
+
+  data %>%
+    arrange(id, trial_nr) %>%
+    group_by(id, trial_nr) %>%
+    slice_tail(n = 1) %>%
+    ungroup() %>%
+    transmute(subjID = id, choice = response, gain = is_gain, loss = is_loss)
+}
+
 gamble_datalist<-function(data){
   # data block from model
   # data {

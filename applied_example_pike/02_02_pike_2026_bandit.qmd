@@ -1,7 +1,7 @@
 ---
 title: "Applied Example: Estimating reliability of reinforcement learning parameters using data from Pike et al 2026"
 author: "Giacomo Bignardi"
-cache: false
+cache: true
 freeze: true
 format:
   html:
@@ -10,39 +10,55 @@ format:
 execute:
   warning: false
   message: false
+knitr:
+  opts_chunk:
+    cache.lazy: false
 ---
 
-Claude Code was used to prepare the first draft of this document, which was later checked and edited. 
+Claude Code was used to prepare the first draft of this document, which was later checked and edited.
 
 # Background
 
 All data from this script comes from [Pike, A. C., … Roiser, J. P. (2026). The recoverability, reliability, and generalizability of reward processing parameters and relation to mental health symptoms. Psychological Medicine, 56, e238. doi:10.1017/S0033291726105340](https://www.cambridge.org/core/journals/psychological-medicine/article/recoverability-reliability-and-generalizability-of-reward-processing-parameters-and-relation-to-mental-health-symptoms/C909E875D2E161CE597FCDCEBD704562#article).
 
-The [models](https://osf.io/p648q/overview) and [datasets](https://osf.io/kde4b/files/osfstorage) are available on the open science framework. To download the models, you may need to press the "Models" tab in Files Preview. 
+The [models](https://osf.io/p648q/overview) and [datasets](https://osf.io/kde4b/files/osfstorage) are available on the Open Science Framework. To download the models, you may need to press the "Models" tab in Files Preview.
 
-We use data from the Fluctuating Band task (task A). Rather than fitting the model used in the paper, I've selected a simpler model (model 3) reported in the supplement and I've made some slight edits to the stan code to improve convergence. The stan code is printed in full in the [appendix below](#appendix-the-stan-model), alongside a walkthrough of how it works.
+We use data from the Fluctuating Bandit task (task A). 
+
+Rather than using the custom Stan model that the authors used, this notebook uses the `bandit4arm_4par()` function from [`hBayesDM`](https://github.com/CCS-Lab/hBayesDM). This is a hierarchical Bayesian implementation of the 4-parameter model from Seymour, Daw, Roiser, Dayan, & Dolan ([2012](https://www.jneurosci.org/content/32/17/5833)), which is run using a cmdstanr backend. The Stan code for the `bandit4arm_4par()` model is printed in full in the [appendix below](#appendix-the-stan-model), alongside a walkthrough of how it works.
 
 # Setup
 
-Analyses are run inside the [`bignardig/tidyverse461:v5`](https://hub.docker.com/r/bignardig/tidyverse461) Docker container - which includes all dependencies except the cmdstan install (v2.39.0). 
+Analyses are run inside the [`bignardig/tidyverse461:v5`](https://hub.docker.com/r/bignardig/tidyverse461) Docker container - which includes all dependencies except the cmdstan install (v2.39.0).
 
-The script `02_01_pike_2026_fit_bandit_models.R` fits the main Bayesian models to time 1 and time 2 separately. It models only the N = 115 subjects who completed **both** sessions (the `bandit_t1.json` / `bandit_t2.json` sub sample, not the full N = 547 `bandit_all.json` sample).
+The script `02_01_pike_2026_fit_bandit_models.R` fits the main Bayesian models to time 1 and time 2 separately. It models only the N = 115 subjects who completed **both** sessions (the matched test-retest subsample, not the full N = 547 sample).
 
-The script `02_04_pike_2026_fit_bandit_splithalf_models.R` fits the Bayesian models four times, splitting the data each each timepoint into halves to estimate split-half reliability at each time point. It models only hte N = 115 subjects who completed **both** sessions. 
+The script `02_01_pike_2026_fit_bandit_splithalf_models.R` fits the Bayesian models four times, splitting the data at each timepoint into halves to estimate split-half reliability at each time point. It models only the N = 115 subjects who completed **both** sessions.
 
-The script `02_01_pike_2026_fit_bandit_fullsample.R` fits the Bayesian model to the full (N = 547) dataset and also to split-half datasets to estimate RMU and split-half reliability on the full sample. 
+The script `02_01_pike_2026_fit_bandit_fullsample.R` fits the Bayesian model to the **full (N = 547) dataset** and also to split-half datasets to estimate RMU and split-half reliability on the full sample.
 
+Run the three fitting scripts once, in order, before rendering this notebook (from the `applied_example_pike/` directory, e.g. inside the `bignardig/tidyverse461:v5` container):
+
+```{bash run-fit-scripts}
+#| eval: false
+
+Rscript 02_01_pike_2026_fit_bandit_models.R
+Rscript 02_01_pike_2026_fit_bandit_splithalf_models.R
+Rscript 02_01_pike_2026_fit_bandit_fullsample.R
+```
 
 ```{r setup}
 rm(list = ls())
 library(gbtoolbox)
+library(hBayesDM)
 library(cmdstanr)
 library(bayesplot)
 library(tidyverse)
 library(gt)
 
 data_dir = file.path("data", "pike_2026")
-subj_pars = c("lrR", "lrP", "ivT")
+subj_pars = c("Arew", "Apun", "R", "P")
+hyper_pars = c("mu_pr", "sigma")
 ```
 
 # Data
@@ -51,7 +67,7 @@ A look at the raw data files behind this notebook
 
 ## Raw trial-level exports
 
-`bandit.csv` / `bandit2.csv` are the authors' raw per-trial exports for session 1 / session 2 (one row per trial, all subjects -- not yet subset to the N = 115 retest sample used elsewhere in this notebook). I've filtered down to the columns actually used for modelling.
+`bandit.csv` / `bandit2.csv` are the authors' raw per-trial exports for session 1 / session 2 (one row per trial). I've filtered down to the columns actually used for modelling.
 
 ```{r load-raw-bandit-data}
 #| output: false
@@ -79,29 +95,26 @@ Time 2
 rmarkdown::paged_table(bandit_raw_t2, options = list(rows.print = 25, cols.print = ncol(bandit_raw_t2)))
 ```
 
-## Stan-ready data lists
+## hBayesDM-ready data frames
 
-`bandit_t1.json` / `bandit_t2.json` are the modeling-ready data lists for the matched N = 115 subjects that `02_01_pike_2026_fit_bandit_models.R` passes to `model_3_noncentered.stan` -- built by the authors' `bandit_datalist()` (`data/pike_2026/utils.R`) from the raw csvs above.
+`hBayesDM::bandit4arm_4par()` expects one row per trial, with columns `subjID`/`choice`/`gain`/`loss`. `bandit4arm_df()` (`data/pike_2026/utils.R`) builds that row-per-trial data.frame directly from the raw csvs above, for the matched N = 115 subjects that `02_01_pike_2026_fit_bandit_models.R` fits.
 
-```{r load-bandit-json}
-library(jsonlite)
-
+```{r build-bandit-df}
 setwd("..") # set the working directory to the parent folder which has /data/
 
-bandit_json_t1 = fromJSON(file.path(data_dir, "bandit_t1.json"))
-bandit_json_t2 = fromJSON(file.path(data_dir, "bandit_t2.json"))
+source(file.path(data_dir, "utils.R")) # provides bandit4arm_df()
 
-str(bandit_json_t1, list.len = 10)
+bandit4arm_df
+
+ids_t2_preview = bandit_raw_t2 %>% distinct(id) %>% arrange(id) %>% pull(id)
+ids_t1_preview = bandit_raw_t1 %>% filter(id %in% ids_t2_preview) %>% distinct(id) %>% arrange(id) %>% pull(id)
+
+bandit_df_t1 = bandit4arm_df(bandit_raw_t1, ids_t1_preview)
+bandit_df_t2 = bandit4arm_df(bandit_raw_t2, ids_t2_preview)
+
+rmarkdown::paged_table(bandit_df_t1, options = list(rows.print = 25, cols.print = ncol(bandit_df_t1)))
 ```
 
-```{r inspect-bandit-json}
-#| include: false
-
-# first subject, first 10 trials: choice (1-4) and the reward/punishment received
-bandit_json_t1$choice[1, 1:10]
-bandit_json_t1$rwd[1, 1:10]
-bandit_json_t1$plt[1, 1:10]
-```
 ## Load saved fits
 
 ```{r load-saved-fits}
@@ -110,47 +123,47 @@ setwd("..") # set the working directory to the parent folder which has /data/
 
 fits_dir = file.path(data_dir, "model_fits")
 
-if (!file.exists(file.path(fits_dir, "fit_model3nc_bandit_t1.RDS"))) {
+if (!file.exists(file.path(fits_dir, "fit_bandit4arm4par_t1.RDS"))) {
   stop("No saved fits found. Run 02_01_pike_2026_fit_bandit_models.R first.")
 }
-if (!file.exists(file.path(fits_dir, "fit_model3nc_bandit_fullsample.RDS"))) {
+if (!file.exists(file.path(fits_dir, "fit_bandit4arm4par_fullsample.RDS"))) {
   stop("No full-sample fit found. Run 02_01_pike_2026_fit_bandit_fullsample.R first.")
 }
-if (!file.exists(file.path(fits_dir, "fit_model3nc_bandit_t1_first.RDS"))) {
-  stop("No split-half fits found. Run 02_04_pike_2026_fit_bandit_splithalf_models.R first.")
+if (!file.exists(file.path(fits_dir, "fit_bandit4arm4par_t1_first.RDS"))) {
+  stop("No split-half fits found. Run 02_01_pike_2026_fit_bandit_splithalf_models.R first.")
 }
-if (!file.exists(file.path(fits_dir, "fit_model3nc_bandit_fullsample_first.RDS"))) {
+if (!file.exists(file.path(fits_dir, "fit_bandit4arm4par_fullsample_first.RDS"))) {
   stop("No full-sample split-half fits found. Run 02_01_pike_2026_fit_bandit_fullsample.R first.")
 }
 
 # retest sample (N = 115), time 1 / time 2
 ids_t1 = readRDS(file.path(fits_dir, "bandit_ids_t1t2.RDS"))
-ids_t2 = ids_t1 # same 115 subjects, same order -- enforced when the JSONs were built
+ids_t2 = ids_t1 # same 115 subjects, same order -- enforced when the fit data.frames were built
 
-fit_bandit_t1 = readRDS(file.path(fits_dir, "fit_model3nc_bandit_t1.RDS"))
-fit_bandit_t2 = readRDS(file.path(fits_dir, "fit_model3nc_bandit_t2.RDS"))
+fit_bandit_t1 = readRDS(file.path(fits_dir, "fit_bandit4arm4par_t1.RDS"))
+fit_bandit_t2 = readRDS(file.path(fits_dir, "fit_bandit4arm4par_t2.RDS"))
 
 # full T1 sample (N = 547)
 ids_all = readRDS(file.path(fits_dir, "bandit_ids_all.RDS"))
-fit_bandit_all = readRDS(file.path(fits_dir, "fit_model3nc_bandit_fullsample.RDS"))
+fit_bandit_all = readRDS(file.path(fits_dir, "fit_bandit4arm4par_fullsample.RDS"))
 
 # retest sample split-half (N = 115), time 1 / time 2
 ids_splithalf = readRDS(file.path(fits_dir, "bandit_splithalf_ids.RDS"))
 
-fit_bandit_t1_first  = readRDS(file.path(fits_dir, "fit_model3nc_bandit_t1_first.RDS"))
-fit_bandit_t1_second = readRDS(file.path(fits_dir, "fit_model3nc_bandit_t1_second.RDS"))
-fit_bandit_t2_first  = readRDS(file.path(fits_dir, "fit_model3nc_bandit_t2_first.RDS"))
-fit_bandit_t2_second = readRDS(file.path(fits_dir, "fit_model3nc_bandit_t2_second.RDS"))
+fit_bandit_t1_first  = readRDS(file.path(fits_dir, "fit_bandit4arm4par_t1_first.RDS"))
+fit_bandit_t1_second = readRDS(file.path(fits_dir, "fit_bandit4arm4par_t1_second.RDS"))
+fit_bandit_t2_first  = readRDS(file.path(fits_dir, "fit_bandit4arm4par_t2_first.RDS"))
+fit_bandit_t2_second = readRDS(file.path(fits_dir, "fit_bandit4arm4par_t2_second.RDS"))
 
 # full T1 sample split-half (N = 547)
-fit_bandit_fullsample_first  = readRDS(file.path(fits_dir, "fit_model3nc_bandit_fullsample_first.RDS"))
-fit_bandit_fullsample_second = readRDS(file.path(fits_dir, "fit_model3nc_bandit_fullsample_second.RDS"))
+fit_bandit_fullsample_first  = readRDS(file.path(fits_dir, "fit_bandit4arm4par_fullsample_first.RDS"))
+fit_bandit_fullsample_second = readRDS(file.path(fits_dir, "fit_bandit4arm4par_fullsample_second.RDS"))
 
 ```
 
 # Diagnostics
 
-We fit `model_3_noncentered.stan` nine times across this notebook -- the T1/T2 retest-sample fits, the full T1 sample, and split-half fits for each of those three -- so before trusting any of the reliability estimates below, we check convergence across all nine, not just the two headline T1/T2 fits.
+We fit `bandit4arm_4par()` nine times across this notebook -- the T1/T2 retest-sample fits, the full T1 sample, and split-half fits for each of those three -- so before trusting any of the reliability estimates below, we check convergence across all nine, not just the two headline T1/T2 fits.
 
 ```{r all-fits}
 all_fits = list(
@@ -165,7 +178,6 @@ all_fits = list(
   "Full T1 second-half (N = 547)" = fit_bandit_fullsample_second
 )
 
-hyper_pars = c("mu", "sigma")
 diag_pars  = c(hyper_pars, subj_pars)
 
 rhat_threshold = 1.01
@@ -202,11 +214,11 @@ sampler_diag %>%
   )
 ```
 
-All nine fits show zero divergences, zero max-treedepth hits, and E-BFMI comfortably above the 0.3 warning threshold -- any red cell above would mean one of the nine fits needs a closer look before its reliability numbers are trusted.
+Any red cell above means one of the nine fits needs a closer look before its reliability numbers are trusted.
 
 ## Rhat / ESS by parameter, across all models
 
-Rather than eyeballing `summary()` output fit-by-fit, we collapse each fit's per-subject `rhat`/`ess_bulk`/`ess_tail` down to one row per parameter family (`mu`, `sigma`, `lrR`, `lrP`, `ivT`) -- taking the worst (max rhat / min ESS) across subjects within that family -- so a single bad subject-level parameter can't hide inside a fit-wide average. Flagged cells breach the conventional rhat > 1.01 / ESS < 400 thresholds.
+Rather than eyeballing `summary()` output fit-by-fit, we collapse each fit's per-subject `rhat`/`ess_bulk`/`ess_tail` down to one row per parameter family (`mu_pr`, `sigma`, `Arew`, `Apun`, `R`, `P`) -- taking the worst (max rhat / min ESS) across subjects within that family -- so a single bad subject-level parameter can't hide inside a fit-wide average. Flagged cells breach the conventional rhat > 1.01 / ESS < 400 thresholds.
 
 ```{r param-diagnostics}
 param_diag = imap_dfr(all_fits, function(fit, label) {
@@ -273,7 +285,7 @@ param_summary %>%
   )
 ```
 
-## Which subjects are driving the poor rhat/ESS?
+## Subject-level checks
 
 The per-parameter table above takes the *worst* subject in each fit -- it can't tell us whether the same handful of subjects are consistently unidentifiable (worth flagging, or excluding, individually) or whether the problem is spread thinly across many different subjects (more likely a sampler-tuning issue than a subject-data issue). We rebuild the same rhat/ESS check but keep every subject, then rank subjects by how often they're flagged across all the (fit x parameter) combinations they appear in.
 
@@ -331,7 +343,7 @@ subject_flag_summary %>%
   )
 ```
 
-If the same subject IDs sit at the top of this table across most rows, that points to specific subjects (e.g. near-random responders where `ivT`/learning rates are only weakly identified by the likelihood) rather than a broad sampler problem. The histogram below shows whether flagged subjects are a small concentrated group or spread across the sample:
+If the same subject IDs sit at the top of this table across most rows, that points to specific subjects (e.g. near-random responders where learning rates/sensitivities are only weakly identified by the likelihood) rather than a broad sampler problem. The histogram below shows whether flagged subjects are a small concentrated group or spread across the sample:
 
 ```{r subject-diagnostics-distribution}
 subject_flag_summary %>%
@@ -351,21 +363,22 @@ subject_flag_summary %>%
 
 ## Group-level parameter trace plots (T1 / T2 retest fits)
 
-`mu`/`sigma` are the population mean/SD (probit scale) behind `lrR`/`lrP`/`ivT`, in that order -- i.e. `mu[2]`/`sigma[2]` are what determine where `lrP` gets pulled to and how tightly (see the per-subject posterior density discussion below).
+`mu_pr`/`sigma` are the population mean/SD (probit scale) behind `Arew`/`Apun`/`R`/`P`, in that order -- i.e. `mu_pr[2]`/`sigma[2]` are what determine where `Apun` gets pulled to and how tightly (see the per-subject posterior density discussion below).
 
 ```{r trace-plots-hyperparameters}
 mcmc_trace(fit_bandit_t1$draws(variables = hyper_pars))
 mcmc_trace(fit_bandit_t2$draws(variables = hyper_pars))
 ```
+
 # Inspect subject-level parameter estimates
 
-## Posterior Means
+## Posterior means
 
-In this section, we extract posterior mean estimates for each subject's reward learning rate (`lrR`), punishment learning rate (`lrP`) and inverse-temperature (`ivT`).
+In this section, we extract posterior mean estimates for each subject's reward learning rate (`Arew`), punishment learning rate (`Apun`), reward sensitivity (`R`) and punishment sensitivity (`P`).
 
 ```{r subject-level-estimates}
 extract_indpars = function(fit, ids, pars = subj_pars) {
-  fit$summary(variables = pars) %>% # This gives a long dataframe with the poster mean/median/quantiles for each parameter in the model
+  fit$summary(variables = pars) %>% # This gives a long dataframe with the posterior mean/median/quantiles for each parameter in the model
     mutate(
       parameter = str_extract(variable, "^[^\\[]+"),
       idx       = as.integer(str_extract(variable, "(?<=\\[)\\d+(?=\\])")),
@@ -383,7 +396,7 @@ indpars_t1
 
 ## Posterior densities
 
-Below we show the posterior densities for each subject, separately for each time point. 
+Below we show the posterior densities for each subject, separately for each time point.
 
 ```{r per-subject-densities}
 get_draws_long = function(fit, ids, pars = subj_pars) {
@@ -429,7 +442,7 @@ plot_subject_densities = function(fit, ids, session_label, pars = subj_pars, yma
     theme_minimal()
 }
 
-plot_subject_densities(fit_bandit_t1, ids_t1, "T1 (N = ")
+plot_subject_densities(fit_bandit_t1, ids_t1, "T1")
 plot_subject_densities(fit_bandit_t2, ids_t2, "T2")
 ```
 
@@ -454,15 +467,15 @@ testretest = map_dfr(subj_pars, function(p) {
   )
 })
 
-testretest |> 
-  gt() |> 
+testretest |>
+  gt() |>
   fmt_number(decimals = 3)
-  
+
 ```
 
 # RMU
 
-`gbtoolbox::reliability()` estimates a *within-session* reliability (`rmu`) using the posterior samples from each subject. 
+`gbtoolbox::reliability()` estimates a *within-session* reliability (`rmu`) using the posterior samples from each subject.
 
 ## Retest sample (N = 115)
 
@@ -494,8 +507,8 @@ rmu = bind_rows(
   extract_rmu(fit_bandit_t2, ids_t2, "T2, N = 115")
 )
 
-rmu |> 
-  gt() |> 
+rmu |>
+  gt() |>
   fmt_number(decimals = 3)
 ```
 
@@ -503,8 +516,8 @@ To calculate RMU more simply (if you just want to check a single parameter), you
 
 ```{r}
 
-results = fit_bandit_t1$draws(variables = "lrR", format = "matrix") |>  #this is our fitted stan model
-  t() |> # make sure participants are on rows and that draws are on columns 
+results = fit_bandit_t1$draws(variables = "Arew", format = "matrix") |>  # this is our fitted Stan model
+  t() |> # make sure participants are on rows and that draws are on columns
   gbtoolbox::reliability()
 
 results
@@ -513,7 +526,7 @@ results
 
 ## Full T1 sample (N = 547)
 
-RMU only needs one session's posterior draws -- `gbtoolbox::reliability()` never touches session 2 -- so it isn't limited to the N = 115 test-retest subsample used above. `bandit_all.json` is the full session-1 sample (N = 547, built in the authors' `Datalists.Rmd` as `bandit_datalist(bandit %>% arrange(id))`, unfiltered by session-2 completion), so fitting the same model to it gives an RMU estimate at the largest N the raw data actually supports. Run `02_01_pike_2026_fit_bandit_fullsample.R` first to produce this fit -- it isn't part of the test-retest/split-half fits above, so it has to be fit separately.
+Here, we fitted the same model to the full N = 547 T1 sample (`02_01_pike_2026_fit_bandit_fullsample.R`), giving an RMU estimate at the largest N we have available.
 
 ```{r load-full-sample-fit}
 fit_bandit_all$diagnostic_summary()
@@ -529,9 +542,9 @@ rel_full_sample |>
 
 # Split-half reliability
 
-In this section, we splitted the data from each session into two equally sized halves. We then fit the models on each split-half dataset independently. 
+In this section, we split the data from each timepoint/session into two equally sized halves. We then fit the models on each split-half dataset independently.
 
-The correlation between each split-half dataset estimates the reliability of each split-half dataset, not of the combined data. To estimate the reliability of the full length test, we use the Spearman-Brown formula. 
+The correlation between the two split-half datasets estimates the reliability of each split-half dataset, not of the combined data. To estimate the reliability of the full-length test, the correlations are adjusted using the Spearman-Brown "prophecy" formula.
 
 ## Retest sample (N = 115)
 
@@ -571,7 +584,7 @@ splithalf |>
 
 ## Full T1 sample split-half (N = 547)
 
-Same first-half/second-half split-half approach as above, but applied to the full N = 547 T1 sample instead of the N = 115 test-retest subsample -- there's no session 2 for these extra subjects, so this is the only split-half estimate available at this N. Run `02_01_pike_2026_fit_bandit_fullsample.R` first to produce these fits (it fits the split halves before the full-length fit used for RMU above).
+Same first-half/second-half split-half approach as above, but applied to the full N = 547 T1 sample instead of the N = 115 test-retest subsample -- there's no session 2 for these extra subjects, so this is the only split-half estimate available at this N. 
 
 ```{r full-sample-splithalf}
 splithalf_full_sample = splithalf_session(
@@ -584,7 +597,7 @@ splithalf_full_sample |>
   fmt_number(decimals = 3)
 ```
 
-# Plots Comparing Performance across estimators
+# Plots comparing reliability estimates
 
 ## All estimates
 
@@ -595,9 +608,10 @@ comparison = bind_rows(rmu, testretest, splithalf, rel_full_sample, splithalf_fu
   arrange(parameter, method) |>
   mutate(
     parameter = case_when(
-      parameter == "ivT" ~ "Inverse\n Temperature",
-      parameter == "lrP" ~ "Punishment\n Learning Rate",
-      parameter == "lrR" ~ "Reward\n Learning Rate"
+      parameter == "Arew" ~ "Reward\n Learning Rate",
+      parameter == "Apun" ~ "Punishment\n Learning Rate",
+      parameter == "R"    ~ "Reward\n Sensitivity",
+      parameter == "P"    ~ "Punishment\n Sensitivity"
     ),
     is_testretest = grepl("Test-Retest", method),
     method = fct_relevel(method, "Test-Retest (N = 115)"),
@@ -636,7 +650,7 @@ ggsave("02_pike_reliability_comparson_all.pdf", width = 6.5, height = 4)
 ```
 
 
-## Filtering out T2 split-half/rmu estimates
+## Filtering out T2 split-half/RMU estimates
 
 ```{r compare-reliability-plot-no-t2}
 comparison_no_t2 = comparison %>%
@@ -654,7 +668,7 @@ comparison_no_t2 %>%
   ) +
   scale_shape_manual(values = c(8, 19, 1, 17, 24, 4, 8)) +
   scale_size_manual(values = c(`TRUE` = 1.3, `FALSE` = 0.7), guide = "none") +
-  scale_y_continuous(expand = expansion(mult = c(0.25, 0.05))) +
+  scale_y_continuous(lim = c(0,1)) +
   labs(
     x = NULL,
     y = "Reliability Estimate", color = "Method", shape = "Method",
@@ -665,114 +679,160 @@ comparison_no_t2 %>%
   theme(
     axis.text = element_text(colour = "black", size = 10),
     axis.title = element_text(size = 10)
-    )
+    ) 
 
-ggsave("02_pike_reliability_comparson_no_t2.pdf", width = 6.5, height = 4)
+ggsave("02_pike_reliability_comparson_no_t2.png", width = 7.2, height = 4.2, dpi = 600)
 ```
 
 # Appendix: the Stan model
 
 ## Source
 
-The stan model used to fit the Bayesian models is presented below:
+The stan model used to fit the Bayesian models is `bandit4arm_4par.stan`, shipped inside the `hBayesDM` package (`system.file("stan_files", "bandit4arm_4par.stan", package = "hBayesDM")`) and printed in full below:
 
 ```{r print-stan-model}
 #| echo: false
 #| results: asis
 
-setwd("..") # set the working directory to the parent folder which has /data/
-
-stan_path = file.path(data_dir, "model", "bandit_models", "model_3_noncentered.stan")
+stan_path = system.file("stan_files", "bandit4arm_4par.stan", package = "hBayesDM")
 cat("``` stan\n", paste(readLines(stan_path), collapse = "\n"), "\n```\n", sep = "")
 ```
 
-## How it works
+## Model description
 
-Task: A hierarchical Rescorla-Wagner learner for a 4-armed bandit, where each arm can independently deliver a reward and a punishment on the same trial. 
+**Task**: A hierarchical Rescorla-Wagner learner for a 4-armed bandit, where each arm can independently deliver a reward and a punishment on the same trial (Seymour et al., [2012](https://www.jneurosci.org/content/32/17/5833)).
 
-Model: Every subject gets their own `lrR` (reward learning rate), `lrP` (punishment learning rate) and `ivT` (inverse-temperature / choice precision), and those are drawn from a population distribution estimated jointly with them -- so the group and the individuals are fit in one pass, and each subject is shrunk toward the group by an amount the data decides.
+**Notation**: Subjects are indexed $i = 1, \dots, N$, trials $t = 1, \dots, T_i$ (the number of trials subject $i$ actually completed) and arms $k \in \{1, 2, 3, 4\}$. On trial $t$, subject $i$ chooses arm $c_{it} \in \{1, 2, 3, 4\}$ and then observes a reward $\text{rew}_{it} \in \{0, 1\}$ and a punishment $\text{pun}_{it} \in \{0, -1\}$. These are the `gain` and `loss` columns built by `bandit4arm_df()` (see above); `hBayesDM` flips the sign of `loss` internally so that punishments enter the model as negative numbers.
 
+**Parameters**: Every subject gets their own
 
-### `model` block -- the likelihood, one trial at a time
+- $\alpha^{r}_i$ -- reward learning rate (`Arew`)
+- $\alpha^{p}_i$ -- punishment learning rate (`Apun`)
+- $R_i$ -- reward sensitivity (`R`), i.e. how much subject $i$ likes reward
+- $P_i$ -- punishment sensitivity (`P`), i.e. how much subject $i$ dislikes punishment
 
-Model Structure:
+**Latent values**: Each subject carries two separate expectations for every arm: a reward expectation $Q^{r}_{itk}$ and a punishment expectation $Q^{p}_{itk}$. Choices are driven by their sum, the *net* value of each arm:
 
-1. **Expected rewards and punishments**
+$$
+Q^{\Sigma}_{itk} = Q^{r}_{itk} + Q^{p}_{itk}
+$$
 
-The model gives each subjec three reward value vectors of length 4 (value for each option), which are updated during th task. The model assumes that reward values start at `initV = [0,0,0,0]`:
+### Choice rule
 
-   - `v_rwd` -- learned reward expectation of each arm
-   - `v_plt` -- learned punishment expectation of each arm
-   - `v` -- thier sum, which we'll call *net value*
-2. **Prediction errors** 
+On every trial the choice is a softmax over the four net values:
 
-- `peR = rwd[i,t] - v_rwd[choice]` actual reward value `rwd` (1/0) minus the reward expectation
-- `peP = -abs(plt[i,t]) - v_plt[choice]` actual punishment value (-1/0) minus the punishment expectation. 
+$$
+c_{it} \sim \text{Categorical}\left(\pi_{it}\right), \qquad
+\pi_{itk} = \Pr\left(c_{it} = k\right) = \frac{\exp\left(Q^{\Sigma}_{itk}\right)}{\sum_{j=1}^{4} \exp\left(Q^{\Sigma}_{itj}\right)}
+$$
 
-Note that `-abs()` forces the punishment target to be 0 or -1 regardless of how `plt` happens to be signed in the data file.
+Note there is no separate inverse-temperature parameter: because $R_i$ and $P_i$ scale the magnitude of the $Q$ values (see the prediction errors below), they also set how deterministic a subject's choices are.
 
-3. **Updating expectations**
+### Initial values
 
-- `v_rwd[choice[i,t]]= v_rwd[choice[i,t]] + lrR[i] * peR`
-- `v_plt[choice[i,t]]= v_plt[choice[i,t]] + lrP[i] * peP`
+At the start of the task all expectations are zero,
 
-Participants update their reward/punishment expectations using the prediction error (peR/peP) multiplied by the learning rates (lrR/lrP).
+$$
+Q^{r}_{i1k} = Q^{p}_{i1k} = 0 \qquad \text{for all } k,
+$$
 
-Only the expectations for the chosen option is updated - see note below. 
+so the first choice is made at random ($\pi_{i1k} = 1/4$ for every arm).
 
-4. **Estimate net value**: 
+### Prediction errors for the chosen arm
 
-- `v[choice] = v_rwd[choice] + v_plt[choice]`
+After choosing arm $c_{it}$ and observing the outcome, the subject computes a reward prediction error and a punishment prediction error for that arm only:
 
-The net value `v` is the sum of the reward and punishment expectations, and drives what subjects select (see next step).
+$$
+\begin{aligned}
+\text{PE}^{r}_{it} &= R_i \cdot \text{rew}_{it} - Q^{r}_{i t c_{it}} \\
+\text{PE}^{p}_{it} &= P_i \cdot \text{pun}_{it} - Q^{p}_{i t c_{it}}
+\end{aligned}
+$$
 
-5. **Selection Probability**: 
+Each is the outcome actually received (scaled by the subject's sensitivity) minus what was expected for the chosen arm. Scaling the raw outcome by $R_i$ or $P_i$ is how the model accounts for individual differences in the overall impact of rewards and punishments: a subject with a large $R_i$ experiences a larger reward prediction error from the same win than a subject with a small $R_i$.
 
-- `choice[i,t] ~ categorical_logit(ivT[i] * v)`. 
+### Fictive prediction errors for the unchosen arms
 
-The probability of selecting each stimulus is modelled using a softmax link function. 
+The unchosen arms are also updated on every trial, as if they had been chosen and delivered *no* reward and *no* punishment (fictive, or counterfactual, updating). Their prediction errors are therefore the negative of the current expectation, for every arm $k$:
 
-The argumment of the function is the net value (`v`) multiplied by the inverse temperature (`ivT`). When $ivT = 0$, participants will select each option randomly. As $ivT \to \infty$, participants will always choose the option with the higher reward expectation.
+$$
+\begin{aligned}
+\text{PEF}^{r}_{itk} &= 0 - Q^{r}_{itk} \\
+\text{PEF}^{p}_{itk} &= 0 - Q^{p}_{itk}
+\end{aligned}
+$$
 
-**Note.** The three unchosen arms keep whatever expected value they had. There is no fictive/counterfactual updating and no decay. This is the single biggest structural difference from hBayesDM's `bandit4arm_4par` (`02_03_pike_2026_bandit4arm_4par.qmd`), which decays *all four* arms toward zero every trial.
+### Value updating
 
-The loop is written per-subject with local `v_rwd`/`v_plt`/`v` declared inside the `for (i in 1:N)` body, so state resets at each subject automatically -- there's no cross-subject leakage even though one `model` block covers all 115 people.
+The expectations carried into the next trial are updated Rescorla-Wagner style, with separate learning rates for reward and punishment. For the chosen arm ($k = c_{it}$):
 
-### `data` block -- what a trial looks like
+$$
+\begin{aligned}
+Q^{r}_{i,t+1,k} &= Q^{r}_{itk} + \alpha^{r}_i \cdot \text{PE}^{r}_{it} \\
+Q^{p}_{i,t+1,k} &= Q^{p}_{itk} + \alpha^{p}_i \cdot \text{PE}^{p}_{it}
+\end{aligned}
+$$
 
-Everything is stored subject x trial, built by the authors' `bandit_datalist()` (`utils.R`) and shipped as `bandit_t1.json` / `bandit_t2.json`:
+For every unchosen arm ($k \neq c_{it}$):
 
-| Variable | Shape | Meaning |
+$$
+\begin{aligned}
+Q^{r}_{i,t+1,k} &= Q^{r}_{itk} + \alpha^{r}_i \cdot \text{PEF}^{r}_{itk} = \left(1 - \alpha^{r}_i\right) Q^{r}_{itk} \\
+Q^{p}_{i,t+1,k} &= Q^{p}_{itk} + \alpha^{p}_i \cdot \text{PEF}^{p}_{itk} = \left(1 - \alpha^{p}_i\right) Q^{p}_{itk}
+\end{aligned}
+$$
+
+i.e. every unchosen arm's reward and punishment expectations decay a fraction $\alpha^{r}_i$ and $\alpha^{p}_i$ of the way back toward zero on every trial. (In the Stan code the fictive update is applied to all four arms first and the chosen arm's entry is then overwritten with the real update; the result is exactly the two cases above.)
+
+This makes sense for the fluctuating bandit task because the reward and punishment probabilities change over time - so that prior knowledge is less useful. 
+
+### Hierarchical priors (non-centred parameterisation)
+
+All four subject-level parameters are bounded ($\alpha^{r}_i, \alpha^{p}_i \in [0, 1]$ and $R_i, P_i \in [0, 30]$) but are not sampled on those scales directly. Instead each subject gets an unconstrained standard-normal score $z_i$, the population location $\mu$ and scale $\sigma$ are applied on that unconstrained scale, and the result is pushed through the standard normal CDF $\Phi(\cdot)$ (Stan's `Phi_approx()`, a fast approximation) to land in $(0, 1)$, then stretched by 30 for the two sensitivities:
+
+$$
+\begin{aligned}
+\alpha^{r}_i &= \Phi\left(\mu_1 + \sigma_1 \, z^{r}_i\right) \\
+\alpha^{p}_i &= \Phi\left(\mu_2 + \sigma_2 \, z^{p}_i\right) \\
+R_i &= 30 \cdot \Phi\left(\mu_3 + \sigma_3 \, z^{R}_i\right) \\
+P_i &= 30 \cdot \Phi\left(\mu_4 + \sigma_4 \, z^{P}_i\right)
+\end{aligned}
+$$
+
+with priors
+
+$$
+\begin{aligned}
+z^{r}_i, \; z^{p}_i, \; z^{R}_i, \; z^{P}_i &\sim \mathcal{N}(0, 1) \\
+\mu_j &\sim \mathcal{N}(0, 1) \\
+\sigma_j &\sim \mathcal{N}^{+}(0, 0.2)
+\end{aligned}
+\qquad j = 1, \dots, 4
+$$
+
+$\mu$ (`mu_pr`) and $\sigma$ (`sigma`) are therefore the population mean and SD on the **probit scale**, not on the learning-rate/sensitivity scale -- $\mu_1 = 0$ means a population centred on $\alpha^{r} = 0.5$, and to read $\sigma$ you have to push it through $\Phi$ too. The half-normal $\sigma_j \sim \mathcal{N}^{+}(0, 0.2)$ is hBayesDM's own prior for this model, the same tightened-sigma fix this project's earlier custom model needed to hand-add for its own convergence problems.
+
+### Mapping between the equations and the Stan code
+
+| Equation | Stan | Meaning |
 |---|---|---|
-| `N`, `T` | int | subjects, max trials |
-| `Tsubj` | `N` | trials actually completed per subject; the trial loop runs `1:Tsubj[i]`, so shorter subjects just stop early and the trailing padding in the matrices is never read |
-| `No` | int (4) | number of arms |
-| `choice` | `N x T` | which arm (1-4) was chosen |
-| `rwd` | `N x T` | reward on that trial, 1 or 0 |
-| `plt` | `N x T` | punishment on that trial, -1 or 0 |
-| `Vinits` | `No` | starting values, `[0, 0, 0, 0]` for reward expectations|
+| $c_{it}$ | `choice[i, t]` | arm chosen (1-4) |
+| $\text{rew}_{it}$ | `rew[i, t]` | reward on that trial (`gain` column; 1 or 0) |
+| $\text{pun}_{it}$ | `los[i, t]` | punishment on that trial, `-abs(loss)` (0 or -1) |
+| $T_i$ | `Tsubj[i]` | trials completed by subject $i$ |
+| $Q^{r}_{it \cdot}$, $Q^{p}_{it \cdot}$, $Q^{\Sigma}_{it \cdot}$ | `Qr`, `Qp`, `Qsum` | reward / punishment / net expectations, all four arms |
+| $\text{PE}^{r}_{it}$, $\text{PE}^{p}_{it}$ | `PEr`, `PEp` | prediction errors, chosen arm |
+| $\text{PEF}^{r}_{it \cdot}$, $\text{PEF}^{p}_{it \cdot}$ | `PEr_fic`, `PEp_fic` | fictive prediction errors, all four arms |
+| $\alpha^{r}_i$, $\alpha^{p}_i$ | `Arew[i]`, `Apun[i]` | reward / punishment learning rates |
+| $R_i$, $P_i$ | `R[i]`, `P[i]` | reward / punishment sensitivities |
+| $z^{r}_i$, $z^{p}_i$, $z^{R}_i$, $z^{P}_i$ | `Arew_pr[i]`, `Apun_pr[i]`, `R_pr[i]`, `P_pr[i]` | subject-level standard-normal scores |
+| $\mu_j$, $\sigma_j$ | `mu_pr[j]`, `sigma[j]` | population mean / SD on the probit scale |
 
-`Nopt` and `unchosen` are declared but never used here. They're inherited from the authors' fuller `model_5.stan`, which updates unchosen arms too; this model only ever touches the arm that was picked. Stan requires them in the data list anyway, since an unused declaration is still a declaration.
+# Session Info
 
-### `parameters` / `transformed parameters` -- the non-centered trick
-
-The three parameters we actually care about are bounded: two learning rates on \[0, 1\] and an inverse-temperature `ivT` on \[0, 6\]. They aren't sampled on those scales. Instead each subject gets an unconstrained standard-normal score, and the population location/scale is applied afterwards:
-
-```
-lrR[i] = Phi_approx(mu[1] + sigma[1] * lrR_raw[i])
-lrP[i] = Phi_approx(mu[2] + sigma[2] * lrP_raw[i])
-ivT[i] = Phi_approx(mu[3] + sigma[3] * ivT_raw[i]) * 6
-```
-
-with `lrR_raw`, `lrP_raw`, `ivT_raw ~ std_normal()`. `Phi_approx()` is a fast approximation to the standard normal CDF, so it maps the real line onto (0, 1); multiplying by 6 stretches `ivT` onto (0, 6). `mu` and `sigma` are therefore the population mean and SD on the **probit scale**, not on the learning-rate scale -- `mu[1] = 0` means a population centred on `lrR = 0.5`, and to read `sigma` you have to push it through `Phi_approx` too.
-
-I've tested using a multivariate normal prior for all three _raw variables, but this let to sampling issues. 
-
-# Session Info 
-  
 ```{r}
 
 sessionInfo()
 
 ```
-  
+
