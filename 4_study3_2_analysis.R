@@ -1,3 +1,11 @@
+# Study 3: Reinforcement-learning (two-armed bandit) simulation - analysis of RMU reliability
+# Containers (see README.md):
+#   - simulations (4_study3_1_simulate.R, 5_study3_1_simulate_320trials.R,
+#     6_study3_1_simulate_240pps.R):       bignardig/tidyverse461:v3 (adds the libtbb-dev
+#                                          system library the Stan model needs; as a
+#                                          Singularity image on the HPC)
+#   - this analysis script:                bignardig/tidyverse461:v5
+
 # Load Packages ----------------------------------------------------------------
 
 library(tidyverse)
@@ -409,22 +417,20 @@ mod = results_table |>
 performance::icc(mod)
 
 # Check for any identical seeds ------------------------------------------------
+# Collapse each seed vector to a string key and use duplicated() to find repeats
+# Because of the way this is coded- we will expect to find repeats - so this isn't a useful check anymore. 
 
-n_check = 100
-n_results <- length(results)
-matches <- matrix(FALSE, nrow=n_check, ncol=n_results)
-
-for(i in 1:n_check) {
-  for(j in (i+1):n_results) {
-    matches[i,j] <- identical(results[[i]]$settings$seed,
-                              results[[j]]$settings$seed)
+if (FALSE){
+  seeds     <- lapply(results, function(x) x$settings$seed)
+  seed_keys <- vapply(seeds, function(s) paste(s, collapse = "_"), character(1))
+  
+  dup_keys <- unique(seed_keys[duplicated(seed_keys)])
+  
+  if (length(dup_keys) > 0) {
+    print(split(seq_along(seed_keys), seed_keys)[dup_keys])   # replicate indices sharing a seed, grouped by seed
+  } else {
+    print("No identical RNG states found!")
   }
-}
-
-if(any(matches)) {
-  which(matches, arr.ind=TRUE)
-} else {
-  print("No identical RNG states found!")
 }
 
 # Plots -----------------------------------------------------------------------

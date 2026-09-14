@@ -1,6 +1,7 @@
 # Study 2: SDT simulation - analysis of RMU vs. Split-Half reliability
-# --------------------------------------------------------------------------------
-# Run using the docker container: bignardig/tidyverse461:v2
+# Containers (see README.md):
+#   - simulations (3_study2_1_simulate.R): bignardig/tidyverse461:v2 (as a Singularity image on the HPC)
+#   - this analysis script:                bignardig/tidyverse461:v5
 #
 # Compares two reliability estimators (RMU, Split-Half) against test-retest
 # reliability (correlation between t1/t2 Bayesian sensitivity point estimates).
@@ -18,10 +19,11 @@ rm(list = ls(all.names = TRUE))
 ## Cluster-robust SE of a mean, clustering by sim_id ---------------------------
 # results_table_long has two rows per simulation (t1/t2 waves) that share the
 # same underlying subject-level truth and are therefore not independent
-# (ICC ~ 0.89 for rmu_est by sim_id). The naive SE formulas used in Study 1
-# (e.g. sqrt(1/(n*(n-1))*sum((est-mean)^2))) assume iid rows, so they understate
+# (ICC ~ 0.89 for rmu_est by sim_id). Naive Monte Carlo SE formulas
+# (e.g. sqrt(1/(n*(n-1))*sum((est-mean)^2))) assume iid rows, so they mis-state
 # the Monte Carlo SE of bias/MSE/coverage. This replaces them with a
 # cluster-robust (CR2) SE of the mean, via a trivial intercept-only lm().
+# Mirrors 2_study1_2_analysis.R / 4_study3_2_analysis.R.
 
 cluster_se_mean = function(x, cluster){
   fit = lm(x ~ 1)
@@ -129,24 +131,18 @@ results_table = results_table[results_table$k_sigma!=0,]
 # Sanity Checks on Simulation Output ------------------------------------------------
 
 ## Check for duplicate RNG seeds -----------------------------------------------
-# Slow, so it's off by default. Set to TRUE to re-run.
+# Collapse each seed vector to a string key and use duplicated() to find repeats
 
-run_seed_check = FALSE
+run_seed_check = TRUE
 
 if (run_seed_check) {
-  n_check = 100
-  n_results <- length(results)
-  matches <- matrix(FALSE, nrow=n_check, ncol=n_results)
+  seeds     <- lapply(results, function(x) x$settings$seed)
+  seed_keys <- vapply(seeds, function(s) paste(s, collapse = "_"), character(1))
 
-  for(i in 1:n_check) {
-    for(j in (i+1):n_results) {
-      matches[i,j] <- identical(results[[i]]$settings$seed,
-                                results[[j]]$settings$seed)
-    }
-  }
+  dup_keys <- unique(seed_keys[duplicated(seed_keys)])
 
-  if(any(matches)) {
-    which(matches, arr.ind=TRUE)
+  if (length(dup_keys) > 0) {
+    print(split(seq_along(seed_keys), seed_keys)[dup_keys])   # replicate indices sharing a seed, grouped by seed
   } else {
     print("No identical RNG states found!")
   }
@@ -388,64 +384,11 @@ table_performance_comparison
 gtsave(table_performance_comparison, filename = file.path("results_tables","3_study2_performance_comparison.html"))
 
 ## Estimator Comparison: RMU vs. Split-Half --------------------------------------
-# Same grouping as "Performance by Condition" above, but kept as a separate table
-# because it feeds `comparison_statistics` (relative EmpSE/RMSE), which is used
-# in the split-violin comparison plot below.
+# Relative EmpSE / RMSE of split-half vs. RMU, derived from the per-condition
+# table above (`results_table_cleaned`). Used in the split-violin comparison
+# plot below.
 
-results_table_cleaned_2 =
-  results_table_long %>%
-  group_by(n_items, sens_sigma, name) %>%       # estimand pooled across sample_sizes since it doesn't meaningfully vary with n; k_sigma dropped as it's constant (0.2) in this simulation
-  mutate(
-    estimand = mean(test_retest_reliability)
-  ) %>%
-  ungroup() %>%
-  group_by(n_items, sens_sigma, name, sample_sizes) %>%       # aggregating over sens_mean & wave (t1/t2); performance metrics still broken down by sample size
-  mutate(
-    difference = est - estimand,
-    ci_correct = (lb <= estimand & ub >= estimand),
-    ci_length  = ub - lb
-  ) %>%
-  summarise(
-    n = n(),
-    estimand    = mean(estimand),
-    estimand_sd = sd(test_retest_reliability),
-    mean        = mean(est),
-    bias        = mean(difference),
-    # bias_se     = sqrt(1/(n*(n-1))*sum((est-mean)^2)),                # old: assumes n independent rows
-    bias_se     = cluster_se_mean(difference, sim_id),                  # new: cluster-robust (CR2), clustered by sim_id
-    bias_lb     = bias - qnorm(0.975)*bias_se,
-    bias_ub     = bias + qnorm(0.975)*bias_se,
-    EmpSE       = sd(est),
-    EmpSE_se    = EmpSE/sqrt(2*(n-1)),
-    EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
-    EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
-
-    # Mean Squared Error
-    MSE         = mean((difference)^2),
-    # MSE_se      = sqrt(sum((difference^2-MSE)^2)/(n*(n-1))),          # old: assumes n independent rows
-    MSE_se      = cluster_se_mean(difference^2, sim_id),                # new: cluster-robust (CR2), clustered by sim_id
-    MSE_lb      = MSE - qnorm(0.975)*MSE_se,
-    MSE_ub      = MSE + qnorm(0.975)*MSE_se,
-
-    # Root Mean Squared Error
-    RMSE        = sqrt(MSE),
-    RMSE_lb     = sqrt(MSE_lb),
-    RMSE_ub     = sqrt(MSE_ub),
-
-    mae         = mean(abs(difference)),
-    coverage    = length(which(ci_correct))/length(ci_correct),
-    # coverage_se = sqrt((coverage*(1-coverage))/n),                    # old: assumes n independent Bernoulli trials
-    coverage_se = cluster_se_mean(as.numeric(ci_correct), sim_id),      # new: cluster-robust (CR2), clustered by sim_id
-    coverage_lb = coverage - 1.96*coverage_se,
-    coverage_ub = coverage + 1.96*coverage_se,
-    mean_ci_length = mean(ci_length),
-    perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
-    perc_diag_low_bfmi_binary    = sum(diag_low_bfmi_binary)/n,
-    mean_testretest_cor_dprime   = mean(testretest_cor_dprime)
-  )  %>%
-  ungroup()
-
-comparison_statistics = results_table_cleaned_2 %>%
+comparison_statistics = results_table_cleaned %>%
   select(
     name,
     sample_sizes, sens_sigma, mean,
@@ -777,50 +720,3 @@ ggsave(file.path("plots","3_study2_ci_plot_splithalf.pdf"), plot = plot_ci_split
 
 # Deprecated / Scratch ------------------------------------------------------------
 
-library(dplyr)
-library(brms)
-
-sim_data <- results_table_long %>%
-  mutate(
-    n_items      = factor(n_items),
-    sens_sigma   = factor(sens_sigma),
-    sample_sizes = factor(sample_sizes)
-  ) %>%
-  select(-contains("diag"), -rowid, -contains("sh"),
-         -testretest_cor_dprime, -settings_used, -settings_used_with_npps) %>%
-  filter(name == "rmu") %>%
-  group_by(n_items, sens_sigma) %>%
-  mutate(
-    estimand = mean(test_retest_reliability)
-  ) %>%
-  ungroup() %>%
-  group_by(n_items, sens_sigma, sample_sizes) %>%
-  mutate(
-    difference = est - estimand,
-    ci_correct = (lb <= estimand & ub >= estimand),
-    ci_length  = ub - lb
-  ) %>%
-  ungroup()
-
-
-bform <- bf(
-  difference ~ n_items * sens_sigma * sample_sizes,
-  sigma ~ n_items + sens_sigma + sample_sizes
-)
-
-fit_var <- brm(
-  formula = bform,
-  data = sim_data,
-  family = gaussian(),
-  cores = 2,
-  chains = 2,
-  iter = 2000,
-  backend = "cmdstanr",
-  threads = threading(6),
-)
-
-summary(fit_var)
-
-# Calculate the grand marginal mean across all conditions
-overall_bias <- emmeans::emmeans(fit_var, ~ 1)
-summary(overall_bias)

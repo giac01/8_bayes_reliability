@@ -1,6 +1,7 @@
 # Study 1: Factor-model simulation - analysis of RMU vs. Alpha / H (FA) / H (IRT)
-# --------------------------------------------------------------------------------
-# Run using the docker container: bignardig/tidyverse461:v2
+# Containers (see README.md):
+#   - simulations (2_study1_1_simulate.R): bignardig/tidyverse461:v2 (as a Singularity image on the HPC)
+#   - this analysis script:                bignardig/tidyverse461:v5
 #
 # Compares four reliability estimators (RMU, Alpha, H (FA), H (IRT)) against
 # test-retest reliability (correlation between t1/t2 Bayesian factor scores)
@@ -10,8 +11,24 @@
 
 library(tidyverse)
 library(gt)
+library(clubSandwich)
 
 rm(list = ls(all.names = TRUE))
+
+# Helper Functions -----------------------------------------------------------------
+
+## Cluster-robust SE of a mean, clustering by rowid (replicate) ------------------
+# results_table_long has two rows per replicate (t1/t2 waves) that share the
+# same simulated true scores and are therefore not independent. Naive Monte
+# Carlo SE formulas (e.g. sqrt(1/(n*(n-1))*sum((est-mean)^2))) assume iid rows,
+# so they mis-state the SE of bias/MSE/coverage. This replaces them with a
+# cluster-robust (CR2) SE of the mean, via a trivial intercept-only lm().
+# Mirrors 3_study2_2_analysis.R / 4_study3_2_analysis.R.
+
+cluster_se_mean = function(x, cluster){
+  fit = lm(x ~ 1)
+  sqrt(vcovCR(fit, cluster = cluster, type = "CR2")[1, 1])
+}
 
 # Load Data ------------------------------------------------------------------------
 
@@ -116,23 +133,17 @@ results_table$sample_sizes = factor(results_table$sample_sizes)
 # Sanity Checks on Simulation Output ------------------------------------------------
 
 ## Check for duplicate RNG seeds ----------------------------------------------------
-# O(n^2) over all replicates - slow, so it's off by default. Set to TRUE to re-run.
-
-run_seed_check = FALSE
+# Collapse each seed vector to a string key and use duplicated() to find repeats
+run_seed_check = TRUE
 
 if (run_seed_check) {
-  n_results <- length(results)
-  matches <- matrix(FALSE, nrow=n_results, ncol=n_results)
+  seeds     <- lapply(results, function(x) x$settings$seed)
+  seed_keys <- vapply(seeds, function(s) paste(s, collapse = "_"), character(1))
 
-  for(i in 1:(n_results-1)) {
-    for(j in (i+1):n_results) {
-      matches[i,j] <- identical(results[[i]]$settings$seed,
-                                results[[j]]$settings$seed)
-    }
-  }
+  dup_keys <- unique(seed_keys[duplicated(seed_keys)])
 
-  if(any(matches)) {
-    which(matches, arr.ind=TRUE)
+  if (length(dup_keys) > 0) {
+    print(split(seq_along(seed_keys), seed_keys)[dup_keys])   # replicate indices sharing a seed, grouped by seed
   } else {
     print("No identical RNG states found!")
   }
@@ -143,8 +154,8 @@ if (run_seed_check) {
 ## Stack t1/t2 into long format ------------------------------------------------------
 # Each original replicate contributes two rows (t1, t2). `rowid` identifies the
 # original replicate and is shared across its t1/t2 rows, so it doubles as the
-# clustering variable used below to compute cluster-robust-ish standard errors
-# (t1 and t2 estimates from the same replicate are not independent).
+# clustering variable passed to cluster_se_mean() below (t1 and t2 estimates
+# from the same replicate are not independent).
 
 results_table_stacked = results_table %>%
   rename(rowid = i) %>%
@@ -196,19 +207,19 @@ results_table_long %>%
 
     # Mean Estimate
     mean        = mean(est),
-    mean_se     = sd(est)/sqrt(n_clusters),
+    mean_se     = cluster_se_mean(est, rowid),                 # cluster-robust (CR2), clustered by replicate
     mean_lb     = mean - qnorm(0.975)*mean_se,
     mean_ub     = mean + qnorm(0.975)*mean_se,
 
     # Empirical Standard Error
     EmpSE       = sd(est),
-    EmpSE_se    = EmpSE/sqrt(2*(n_clusters-1)),
+    EmpSE_se    = EmpSE/sqrt(2*(n-1)),                         # naive iid formula, as in Studies 2 & 3
     EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
     EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
 
     # Bias
     bias        = mean(difference),
-    bias_se     = sqrt(1/(n_clusters*(n_clusters-1))*sum((est-mean)^2)),
+    bias_se     = cluster_se_mean(difference, rowid),          # cluster-robust (CR2), clustered by replicate
     bias_lb     = bias - qnorm(0.975)*bias_se,
     bias_ub     = bias + qnorm(0.975)*bias_se,
 
@@ -217,7 +228,7 @@ results_table_long %>%
 
     # Mean Squared Error
     MSE         = mean((difference)^2),
-    MSE_se      = sqrt(sum((difference^2-MSE)^2)/(n_clusters*(n_clusters-1))),
+    MSE_se      = cluster_se_mean(difference^2, rowid),        # cluster-robust (CR2), clustered by replicate
     MSE_lb      = MSE - qnorm(0.975)*MSE_se,
     MSE_ub      = MSE + qnorm(0.975)*MSE_se,
 
@@ -227,13 +238,13 @@ results_table_long %>%
 
     # Coverage
     coverage    = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n_clusters),
+    coverage_se = cluster_se_mean(as.numeric(ci_correct), rowid),   # cluster-robust (CR2), clustered by replicate
     coverage_lb = coverage - qnorm(0.975)*coverage_se,
     coverage_ub = coverage + qnorm(0.975)*coverage_se,
 
     # Bias corrected coverage
     coverage_be    = length(which(ci_be_correct))/length(ci_be_correct),
-    coverage_be_se = sqrt((coverage_be*(1-coverage_be))/n_clusters),
+    coverage_be_se = cluster_se_mean(as.numeric(ci_be_correct), rowid),   # cluster-robust (CR2), clustered by replicate
     coverage_be_lb = coverage_be - qnorm(0.975)*coverage_be_se,
     coverage_be_ub = coverage_be + qnorm(0.975)*coverage_be_se,
 
@@ -267,19 +278,19 @@ results_table_long %>%
 
     # Mean Estimate
     mean        = mean(est),
-    mean_se     = sd(est)/sqrt(n_clusters),
+    mean_se     = cluster_se_mean(est, rowid),                 # cluster-robust (CR2), clustered by replicate
     mean_lb     = mean - qnorm(0.975)*mean_se,
     mean_ub     = mean + qnorm(0.975)*mean_se,
 
     # Empirical Standard Error
     EmpSE       = sd(est),
-    EmpSE_se    = EmpSE/sqrt(2*(n_clusters-1)),
+    EmpSE_se    = EmpSE/sqrt(2*(n-1)),                         # naive iid formula, as in Studies 2 & 3
     EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
     EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
 
     # Bias
     bias        = mean(difference),
-    bias_se     = sqrt(1/(n_clusters*(n_clusters-1))*sum((est-mean)^2)),
+    bias_se     = cluster_se_mean(difference, rowid),          # cluster-robust (CR2), clustered by replicate
     bias_lb     = bias - qnorm(0.975)*bias_se,
     bias_ub     = bias + qnorm(0.975)*bias_se,
 
@@ -288,7 +299,7 @@ results_table_long %>%
 
     # Mean Squared Error
     MSE         = mean((difference)^2),
-    MSE_se      = sqrt(sum((difference^2-MSE)^2)/(n_clusters*(n_clusters-1))),
+    MSE_se      = cluster_se_mean(difference^2, rowid),        # cluster-robust (CR2), clustered by replicate
     MSE_lb      = MSE - qnorm(0.975)*MSE_se,
     MSE_ub      = MSE + qnorm(0.975)*MSE_se,
 
@@ -299,7 +310,7 @@ results_table_long %>%
 
     # Coverage
     coverage    = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n_clusters),
+    coverage_se = cluster_se_mean(as.numeric(ci_correct), rowid),   # cluster-robust (CR2), clustered by replicate
     coverage_lb = coverage - qnorm(0.975)*coverage_se,
     coverage_ub = coverage + qnorm(0.975)*coverage_se,
 
@@ -344,19 +355,19 @@ results_table_long %>%
 
     # Mean Estimate
     mean        = mean(est),
-    mean_se     = sd(est)/sqrt(n_clusters),
+    mean_se     = cluster_se_mean(est, rowid),                 # cluster-robust (CR2), clustered by replicate
     mean_lb     = mean - qnorm(0.975)*mean_se,
     mean_ub     = mean + qnorm(0.975)*mean_se,
 
     # Empirical Standard Error
     EmpSE       = sd(est),
-    EmpSE_se    = EmpSE/sqrt(2*(n_clusters-1)),
+    EmpSE_se    = EmpSE/sqrt(2*(n-1)),                         # naive iid formula, as in Studies 2 & 3
     EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
     EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
 
     # Bias
     bias        = mean(difference),
-    bias_se     = sqrt(1/(n_clusters*(n_clusters-1))*sum((est-mean)^2)),
+    bias_se     = cluster_se_mean(difference, rowid),          # cluster-robust (CR2), clustered by replicate
     bias_lb     = bias - qnorm(0.975)*bias_se,
     bias_ub     = bias + qnorm(0.975)*bias_se,
 
@@ -365,7 +376,7 @@ results_table_long %>%
 
     # Mean Squared Error
     MSE         = mean((difference)^2),
-    MSE_se      = sqrt(sum((difference^2-MSE)^2)/(n_clusters*(n_clusters-1))),
+    MSE_se      = cluster_se_mean(difference^2, rowid),        # cluster-robust (CR2), clustered by replicate
     MSE_lb      = MSE - qnorm(0.975)*MSE_se,
     MSE_ub      = MSE + qnorm(0.975)*MSE_se,
 
@@ -376,7 +387,7 @@ results_table_long %>%
 
     # Coverage
     coverage    = length(which(ci_correct))/length(ci_correct),
-    coverage_se = sqrt((coverage*(1-coverage))/n_clusters),
+    coverage_se = cluster_se_mean(as.numeric(ci_correct), rowid),   # cluster-robust (CR2), clustered by replicate
     coverage_lb = coverage - qnorm(0.975)*coverage_se,
     coverage_ub = coverage + qnorm(0.975)*coverage_se,
 
