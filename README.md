@@ -23,10 +23,10 @@ Unreliable measurement can lead to lower statistical power, attenuated effect si
 
 ## Environment
 
-This project runs in the Docker container **`bignardig/tidyverse461:v1`**, based on **R version 4.6.1**.
+This project runs in the Docker container **`bignardig/tidyverse461:v5`**, based on **R version 4.6.1**.
 
 > [!NOTE]
-> Study 3 (`4_study3_*`) requires **`bignardig/tidyverse461:v3`** instead, which adds the `libtbb-dev` system library needed to run its code.
+> Study 3 (`4_study3_*`) >v3 **`bignardig/tidyverse461:v3`** instead, which adds the `libtbb-dev` system library needed to run its code.
 
 > [!WARNING]
 > This repository is actively being updated. Scripts, file names, and structure are being reorganized and may change without notice — expect breaking changes until this warning is removed.
@@ -74,11 +74,20 @@ Simulates choice/outcome sequences from a Rescorla-Wagner-style reinforcement-le
 
 Simulation functions used: **`sim_ri`** (simulates trial-by-trial choices/outcomes from learning rate, decision noise, and reward probabilities, using **`g_normaluniform`** to draw individual differences in learning rate/decision noise and **`g_softmax`** to convert beliefs into choice probabilities), **`run_ri_sim`** (orchestrates simulation + full-MCMC Stan fit + reliability estimation for Study 3), **`run_ri_sim_variational`** (same, but fits via Stan's variational inference, used in Study 3b)
 
+## Helpful terminal commands
+
+docker run --rm -it --name bandit_fullsample \
+  --user rstudio \
+  -v /home/giaco:/home/rstudio \
+  -w "/home/rstudio${PWD#/home/giaco}" \
+  bignardig/tidyverse461:v5 \
+  Rscript 02_01_pike_2026_fit_bandit_fullsample.R
+
 
 ## Helpful SLURM commands
 
 See all completed jobs last 30 days 
-
+```{bash}
 sacct -S now-30days --name=study3_array_320trials --format=JobID,JobName,State,ExitCode,Elapsed,AllocCPUS
 
 sacct -S now-30days --name=study3_array --format=JobID,JobName%25,State,Elapsed,ReqMem,MaxRSS%12 --units=G | grep "COMPLETED" | grep "batch"
@@ -87,3 +96,4 @@ Command to sync data from hpc:
 rsync -avzP k2583181@create:/users/k2583181/8_bayes_reliability/results/ /home/giaco/Downloads/hpc_results/
 
 rsync -av --ignore-existing ~/Downloads/hpc_results/ ~/GitHub/8_bayes_reliability/results/
+```

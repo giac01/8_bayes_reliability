@@ -31,7 +31,7 @@ cluster_se_mean = function(x, cluster){
 results_path = file.path("results","study3_results")
 
 results_files = list.files(results_path,
-                           pattern = "^study3_results_seed_",
+                           pattern = "^study3_results_",
                            recursive = FALSE,
                            full.names = TRUE
 )
@@ -434,15 +434,15 @@ if(any(matches)) {
 library(grid)
 
 n_trials_labels <- c(
-  "100" = "100 Trials",
-  "200" = "200 Trials",
-  "400" = "400 Trials"
+  "90" = "90 Trials",
+  "180" = "180 Trials",
+  "320" = "320 Trials"
 )
 
 learning_rate_labels <- c(
   "0"   = "Learning Rate SD = 0",
-  "0.2" = "Learning Rate SD = 0.056",
-  "0.4" = "Learning Rate SD = 0.112"
+  "0.25" = "Learning Rate SD = 0.070",
+  "0.50" = "Learning Rate SD = 0.138"
 )
 
 plot_violinplot = results_table %>%
