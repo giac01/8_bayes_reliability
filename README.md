@@ -45,7 +45,7 @@ The simulation results in `results/` were produced with the v2/v3 containers; th
 - `data/` — study data (not tracked in git)
 - `results/`, `results_tables/` — simulation outputs
 - `applied_example_pike/` — worked applied example fitting the RMU method to real reinforcement-learning data (see [Applied example](#applied-example) below)
-- `tutorial_calculating_rmu_gonogo.qmd`, `tutorial_rmu_sum_score_reliability.qmd` — worked tutorials (see [Tutorials](#tutorials) below)
+- `tutorial_calculating_rmu_gonogo.qmd`, `tutorial_rmu_sum_score_reliability.qmd`, `tutorial_calculating_rmu_bandit.qmd` — worked tutorials (see [Tutorials](#tutorials) below)
 
 There are three studies, each simulating data from a different measurement model, fitting it with Stan/brms, and computing RMU reliability alongside classical benchmarks (coefficient alpha, coefficient H, split-half). Each study has a `_0_slurm` job script (submits the simulation to an HPC cluster), a `_1_simulate.R` script (runs the simulation for one seed/job), and a `_2_analysis.R` script (collates and summarises results across jobs).
 
@@ -91,14 +91,15 @@ Simulation functions used: **`sim_ri`** (simulates trial-by-trial choices/outcom
 - `02_01_pike_2026_fit_bandit_models.R` — fits the model separately to sessions 1 and 2 for the N = 115 subjects with both sessions (for test-retest reliability)
 - `02_01_pike_2026_fit_bandit_splithalf_models.R` — fits the model to first-half/second-half trials within each session, for the same N = 115 subjects (for split-half reliability)
 - `02_01_pike_2026_fit_bandit_fullsample.R` — fits the model (full-length and split-half) to the full N = 547 sample, since RMU doesn't require test-retest data
-- `02_02_pike_2026_bandit.qmd` — reads the saved fits from the three scripts above and reports/compares the RMU, test-retest, and split-half reliability estimates (run the three fitting scripts first, e.g. inside `bignardig/tidyverse461:v5`)
+- [`02_02_pike_2026_bandit.html`](applied_example_pike/02_02_pike_2026_bandit.html) (source: `02_02_pike_2026_bandit.qmd`) — reads the saved fits from the three scripts above and reports/compares the RMU, test-retest, and split-half reliability estimates (run the three fitting scripts first, e.g. inside `bignardig/tidyverse461:v5`)
 
 ## Tutorials
 
-Two standalone worked tutorials, not tied to the paper's simulation studies:
+Standalone worked tutorials, not tied to the paper's simulation studies:
 
-- `tutorial_calculating_rmu_gonogo.qmd` — calculates RMU reliability for the `d'` parameter of a signal-detection model fit to go/no-go task data ([Hedge, Powell & Sumner, 2018](https://link.springer.com/article/10.3758/s13428-017-0935-1); data in `data/osf_hedge_cwzds/`), comparing against test-retest, split-half, and empirical reliability
-- `tutorial_rmu_sum_score_reliability.qmd` — demonstrates RMU for estimating mean/sum score reliability using a simple multilevel simulation (repeated length measurements)
+- [`tutorial_calculating_rmu_gonogo.html`](tutorial_calculating_rmu_gonogo.html) (source: `tutorial_calculating_rmu_gonogo.qmd`) — calculates RMU reliability for the `d'` parameter of a signal-detection model fit to go/no-go task data ([Hedge, Powell & Sumner, 2018](https://link.springer.com/article/10.3758/s13428-017-0935-1); data in `data/osf_hedge_cwzds/`), comparing against test-retest, split-half, and empirical reliability
+- [`tutorial_rmu_sum_score_reliability.html`](tutorial_rmu_sum_score_reliability.html) (source: `tutorial_rmu_sum_score_reliability.qmd`) — demonstrates RMU for estimating mean/sum score reliability using a simple multilevel simulation (repeated length measurements)
+- [`tutorial_calculating_rmu_bandit.html`](tutorial_calculating_rmu_bandit.html) (source: `tutorial_calculating_rmu_bandit.qmd`) — calculates RMU reliability for a reinforcement-learning (fluctuating bandit) task fit hierarchically with `hBayesDM::bandit4arm_4par()`, both manually from posterior draws and automatically via `reliability()`
 
 ## Helpful terminal commands
 
