@@ -796,7 +796,7 @@ comparison_no_t2 %>%
   scale_size_manual(values = c(`TRUE` = 1.3, `FALSE` = 0.7), guide = "none") +
   scale_y_continuous(lim = c(0,1)) +
   labs(
-    title = "Reliability estimates by method (bars show 95% credible or confidence intervals)",
+    title = "Reliability estimates by method (bars indicates 95% credible or confidence intervals",
     x = NULL,
     y = "Reliability Estimate", color = "Method", shape = "Method",
     tag = "C"
@@ -963,4 +963,5 @@ $\mu$ (`mu_pr`) and $\sigma$ (`sigma`) are therefore the population mean and SD 
 sessionInfo()
 
 ```
+
 

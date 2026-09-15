@@ -1,0 +1,291 @@
+---
+title: "Tutorial: Calculating RMU reliability for a reinforcement learning task, using hBayesDM"
+author: "Giacomo Bignardi"
+date: "09/14/2026"
+cache: true
+format:
+  html:
+    embed-resources: true
+    toc: true
+execute:
+  warning: false
+  message: false
+categories:
+  - reliability
+  - cognition
+  - reinforcement learning
+---
+
+*Claude code was used to prepare the initial version of this tutorial using Giacomo's other tutorials and code for analysing this task. This was then checked and edited by Giacomo.*
+
+# Introduction
+
+This is a brief walk-through of how to calculate reliability using relative measurement uncertainty (RMU) described in our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1), this time applied to a **reinforcement learning task** rather than a  signal-detection model (see the [go/no-go tutorial](tutorial_calculating_rmu_gonogo.html) for that example).
+
+Reinforcement learning models can be fit hierarchically in a Bayesian framework, and [`hBayesDM`](https://github.com/CCS-Lab/hBayesDM) is a popular R package that ships ready-made Stan models for many common tasks, so you don't have to write your own Stan code. This tutorial shows:
+
+1. How data from a "fluctuating bandit" reinforcement learning task looks.
+2. How to fit a hierarchical Bayesian model to this data using `hBayesDM::bandit4arm_4par()`.
+3. How to calculate RMU reliability **manually**, by pulling a matrix of posterior draws out of the fitted model yourself. This approach can be applied beyond `hBayesDM` models.
+4. How to calculate RMU reliability **automatically**, by passing the fitted `hBayesDM` model object straight to `reliability()`.
+
+In the folder `applied_example_pike/` I have more analyses, directly comparing RMU estimates to split-half and test-retest estimates. This tutorial will focus on estimating reliability using RMU, rather than providing a comprehensive workflow for fitting Bayesian models with best practices. 
+
+## Data
+
+We use the Fluctuating Bandit task (task A) from [Pike, A. C., ... Roiser, J. P. (2026). The recoverability, reliability, and generalizability of reward processing parameters and relation to mental health symptoms. Psychological Medicine, 56, e238.](https://www.cambridge.org/core/journals/psychological-medicine/article/recoverability-reliability-and-generalizability-of-reward-processing-parameters-and-relation-to-mental-health-symptoms/C909E875D2E161CE597FCDCEBD704562#article) The data and Stan models are openly available on the [Open Science Framework](https://osf.io/kde4b/files/osfstorage).
+
+Participants completed this task at two time points, but far fewer participants returned for the second session (N = 115) than completed the first (N = 547). **In this tutorial we only use time 1 data, and only for the N = 115 participants who also completed time 2** (i.e. the smaller of the two time-1 sub-samples) -- this matches the sample used for the test-retest/split-half comparisons in `applied_example_pike/`, and keeps the model small enough to fit quickly. 
+
+It is worth emphasising that the main benefit of RMU is that it does not need retest data - so in practice we would use the larger dataset to get a more accurate estimate.  
+
+# Setup
+
+```{r}
+rm(list = ls(all.names = TRUE))
+set.seed(1)
+
+library(tidyverse)
+library(hBayesDM)
+library(cmdstanr)
+library(gbtoolbox)  # devtools::install_github("giac01/gbtoolbox")
+library(gt)
+
+data_dir = file.path("data", "pike_2026")
+```
+
+`hBayesDM`'s Stan models are fit via `cmdstanr`, which needs a working cmdstan installation. If `cmdstanr` doesn't already know where cmdstan is (e.g. from a previous `set_cmdstan_path()` call, saved in `cmdstanr`'s config file), we point it at one below -- either via a `CMDSTAN` environment variable, or by editing the fallback path directly (see the [cmdstanr installation guide](https://mc-stan.org/cmdstanr/articles/cmdstanr.html#installing-cmdstan) if you don't have cmdstan installed):
+
+```{r}
+cmdstan_path_candidate = Sys.getenv("CMDSTAN", unset = file.path(Sys.getenv("HOME"), ".cmdstan", "cmdstan-2.39.0"))
+
+if (dir.exists(cmdstan_path_candidate)) cmdstanr::set_cmdstan_path(cmdstan_path_candidate)
+
+cmdstanr::cmdstan_path()
+```
+
+## Load Data
+
+`bandit.csv` contains every participant's time 1 data (N = 547); `bandit2.csv` contains time 2 data, only for the N = 115 participants who returned for a second session. We use the IDs in `bandit2.csv` purely to identify our smaller sub-sample, then keep only their time 1 rows from `bandit.csv`.
+
+```{r}
+bandit_raw_t1 = read_csv(file.path(data_dir, "bandit.csv"),  show_col_types = FALSE)
+bandit_raw_t2 = read_csv(file.path(data_dir, "bandit2.csv"), show_col_types = FALSE)
+
+ids_retest_sample = bandit_raw_t2 |> distinct(id) |> arrange(id) |> pull(id)
+
+bandit_raw_t1 = bandit_raw_t1 |>
+  filter(id %in% ids_retest_sample) |>
+  select(id, trial_nr, is_gain, is_loss, response)
+
+n_trials_per_pps = count(bandit_raw_t1, id)$n
+
+cat("Number of participants:", n_distinct(bandit_raw_t1$id), "\n")
+cat("Trials per participant:", if (length(unique(n_trials_per_pps)) == 1) unique(n_trials_per_pps) else paste(range(n_trials_per_pps), collapse = "-"), "\n")
+```
+
+This is what the raw trial-level data looks like -- one row per trial, for the columns we actually need:
+
+```{r}
+bandit_raw_t1 |>
+  slice(1:10) |>
+  knitr::kable(caption = "First 10 rows of the raw time 1 data")
+```
+
+- `id`: participant ID
+- `trial_nr`: trial number (0-indexed; 200 trials per participant)
+- `is_gain`: whether a reward was delivered on that trial for the option chosen (1) or not (0)
+- `is_loss`: whether a punishment was delivered on that trial for the option chosen (1) or not (0)
+- `response`: which of the 4 bandit arms (1-4) the participant chose
+
+## The Fluctuating Bandit Task
+
+On each trial, participants choose one of four "bandit" arms. Each arm can independently deliver a reward and/or a punishment, and the underlying reward/punishment probabilities of each arm drift over the course of the task, so participants have to keep learning and updating their beliefs rather than settling on one best option.
+
+We will fit `hBayesDM::bandit4arm_4par()`, a hierarchical Rescorla-Wagner model with 4 free parameters per participant:
+
+- `Arew` -- reward learning rate
+- `Apun` -- punishment learning rate
+- `R` -- reward sensitivity
+- `P` -- punishment sensitivity
+
+A full description of the model equations and the Stan code itself is in the [appendix of the full applied example](applied_example_pike/02_02_pike_2026_bandit.html#appendix-the-stan-model); we won't repeat it here.
+
+A quick visualisation of the raw data, for a couple of participants, showing which arm was chosen on each trial and whether it paid out a reward or punishment:
+
+```{r}
+bandit_raw_t1 |>
+  filter(id %in% ids_retest_sample[1:2]) |>
+  mutate(outcome = case_when(
+    is_gain == 1 ~ "Reward",
+    is_loss == 1 ~ "Punishment",
+    TRUE         ~ "Neither"
+  )) |>
+  ggplot(aes(x = trial_nr, y = factor(response), color = outcome)) +
+  geom_point(size = 1.5) +
+  facet_wrap(~id, ncol = 1, labeller = label_both) +
+  scale_color_manual(values = c("Reward" = "forestgreen", "Punishment" = "firebrick", "Neither" = "grey70")) +
+  labs(
+    title = "Chosen arm and outcome across trials, 2 example participants",
+    x = "Trial", y = "Arm chosen", color = "Outcome"
+  ) +
+  theme_bw()
+```
+
+## Prepare Data for hBayesDM
+
+`hBayesDM::bandit4arm_4par()` expects one row per trial, with columns `subjID`/`choice`/`gain`/`loss`, in contrast to the `id`/`trial_nr`/`is_gain`/`is_loss`/`response` columns in the raw data above. It has no `trial_nr` column of its own -- it infers each participant's trial sequence purely from row order -- so we arrange by participant and trial number, then rename the columns it needs:
+
+```{r}
+bandit_df = bandit_raw_t1 |>
+  arrange(id, trial_nr) |>
+  group_by(id, trial_nr) |>
+  slice_tail(n = 1) |>  # keep the last recorded row for any repeated trial number (affects a handful of trials for one participant)
+  ungroup() |>
+  transmute(subjID = id, choice = response, gain = is_gain, loss = is_loss)
+
+bandit_df |>
+  slice(1:10) |>
+  knitr::kable(caption = "First 10 rows, hBayesDM-ready data")
+```
+
+# Fit the Model
+
+We now fit `bandit4arm_4par()` to all 115 participants at once -- it's a *hierarchical* model, so every participant's `Arew`/`Apun`/`R`/`P` estimate borrows statistical information from the group.
+
+We use `niter = 2000` (`nwarmup = 1000` of which are warmup, leaving 1,000 post-warmup draws per chain), `nchain = 4`, `ncore = 4`, and `adapt_delta = 0.95`. This is a hard to sample model -- expect this chunk to take several hours. In  `applied_example_pike/` we used even more conservative settings (`niter = 8000`, `nwarmup = 3000`, `adapt_delta = 0.975`) and inspect the diagnostics in more detail. 
+
+```{r}
+#| message: false
+#| warning: false
+#| results: 'hide'
+
+fit_bandit = bandit4arm_4par(
+  data        = bandit_df,
+  niter       = 2000,
+  nwarmup     = 1000,
+  nchain      = 4,
+  ncore       = 4,
+  adapt_delta = 0.95,
+  seed        = 1
+)
+
+# cmdstanr fit objects lazily read draws/diagnostics from CSV files on disk the first time
+# they're requested. Since we're relying on knitr's cache to persist `fit_bandit` across
+# separate renders (i.e. separate R sessions, possibly after those CSV files no longer exist),
+# we force everything to be read into memory now -- the same thing cmdstanr's own
+# fit$save_object() does before writing a fit to disk.
+invisible(fit_bandit$fit$draws())
+try(fit_bandit$fit$sampler_diagnostics(), silent = TRUE)
+```
+
+`fit_bandit` is an object of class `hBayesDM`, which bundles together several things we'll need below:
+
+```{r}
+class(fit_bandit)
+names(fit_bandit)
+```
+
+- `fit_bandit$fit` is the underlying `cmdstanr` fit object (a `CmdStanMCMC`), which is what you'd normally interact with directly if you'd written your own Stan model.
+- `fit_bandit$all_ind_pars` is a data frame of posterior-mean point estimates for each participant.
+- `fit_bandit$par_vals` is a list containing every parameter's full posterior draws.
+
+## A quick convergence check
+
+Before trusting any reliability estimates from this fit, we check for divergent transitions and look at Rhat/ESS for the group-level (`mu_pr`, `sigma`) and individual-level (`Arew`, `Apun`, `R`, `P`) parameters. Conventional thresholds are no divergent transitions, Rhat < 1.01, and ESS > 400:
+
+```{r}
+d = fit_bandit$fit$diagnostic_summary()
+cat("Divergent transitions:", sum(d$num_divergent), "\n")
+cat("Max treedepth hits:   ", sum(d$num_max_treedepth), "\n")
+cat("Min E-BFMI:           ", round(min(d$ebfmi), 3), "\n")
+
+fit_bandit$fit$summary(variables = c("mu_pr", "sigma", "Arew", "Apun", "R", "P")) |>
+  mutate(parameter = str_extract(variable, "^[^\\[]+")) |>
+  group_by(parameter) |>
+  summarise(
+    max_rhat     = max(rhat, na.rm = TRUE),
+    min_ess_bulk = min(ess_bulk, na.rm = TRUE),
+    min_ess_tail = min(ess_tail, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  gt() |>
+  fmt_number(columns = max_rhat, decimals = 3) |>
+  fmt_number(columns = c(min_ess_bulk, min_ess_tail), decimals = 0)
+```
+
+If any divergences show up or Rhat/ESS still look poor at these settings, try increasing `adapt_delta` further and running more warmup and sampling iterations. 
+
+# Reliability Estimation
+
+RMU reliability only needs the posterior draws for each participant's parameter, from a single model fit -- there's no need for retest data or split-half models. RMU is described in the [go/no-go tutorial](tutorial_calculating_rmu_gonogo.html#rmu) and in the [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1).
+
+## Manually: pulling a matrix of posterior draws
+
+`reliability()`'s default method just needs a matrix with one row per participant and one column per posterior draw. We can pull this straight out of the `cmdstanr` fit object, for a single parameter (here, `Arew`, the reward learning rate).
+
+`reliability()` calculates RMU by randomly splitting each participant's posterior draws into two halves and correlating them, repeated many times to build up a posterior distribution for reliability itself (see the [go/no-go tutorial](tutorial_calculating_rmu_gonogo.html#rmu) for the full mechanics). Because we only have a finite number of posterior draws to split, *which* random split we happen to get will nudge the resulting point estimate and HDCI slightly -- rerunning `reliability()` on the exact same draws will give you a very similar, but not identical, answer each time. We set a seed before each call below so the results are reproducible, and so that the manual and automatic approaches (which use the same draws, in the same parameter order) give identical estimates rather than just very similar ones.
+
+```{r}
+set.seed(42)
+
+Arew_draws = fit_bandit$fit$draws(variables = "Arew", format = "matrix") |>  # draws x participants
+  t()  # transpose so participants are on rows, draws are on columns
+
+dim(Arew_draws)  # 115 participants x 4000 posterior draws (4 chains x 1000 post-warmup draws)
+
+rel_Arew_manual = reliability(Arew_draws)
+
+print(rel_Arew_manual)
+```
+
+We can repeat this for each of the 4 individual-level parameters in the model:
+
+```{r}
+subj_pars = c("Arew", "Apun", "R", "P")
+
+set.seed(42)
+
+rel_manual = map_dfr(subj_pars, function(par){
+  draws = fit_bandit$fit$draws(variables = par, format = "matrix") |> t()
+  rel   = reliability(draws)
+  tibble(
+    parameter = par,
+    rmu       = rel$hdci$rmu_estimate,
+    lower     = rel$hdci$hdci_lowerbound,
+    upper     = rel$hdci$hdci_upperbound
+  )
+})
+
+rel_manual |>
+  gt() |>
+  fmt_number(columns = c(rmu, lower, upper), decimals = 3)
+```
+
+## Automatically: passing the fitted hBayesDM model directly
+
+`gbtoolbox::reliability()` is a generic function -- if you pass it an object of class `hBayesDM` (rather than a plain matrix), it dispatches to `reliability.hBayesDM()`, which pulls out the posterior draws for you and calculates RMU reliability for every individual-level parameter in the model automatically (by default; you can also pass `parameter = c("Arew", "R")` etc. to only calculate reliability for specific parameters).
+
+```{r}
+set.seed(42)
+
+rel_auto = reliability(fit_bandit, parameter = subj_pars)
+```
+
+This prints a summary table directly, and also returns a named list (one element per parameter, each with the same `$hdci`/`$reliability_posterior_draws` structure as the manual approach above):
+
+```{r}
+rel_auto$Arew$hdci
+```
+
+# Wrap-up
+
+Check the convergence diagnostics above before reading much into the reliability estimates -- if Rhat/ESS look healthy and there are no divergent transitions, the numbers above are a reasonable single-fit estimate of RMU reliability for this task and sample. For a more thoroughly-checked version of this exact model on this exact data (checked against test-retest and split-half reliability, and against a fit to the full N = 547 sample), see `applied_example_pike/02_02_pike_2026_bandit.qmd`.
+
+The key takeaway for your own models: whichever way you fit a hierarchical Bayesian model, if you can get a matrix of posterior draws with participants on the rows and draws on the columns, you can calculate RMU reliability with `reliability()` -- and if your model was fit with `hBayesDM` specifically, you can skip the matrix-pulling step entirely and just call `reliability()` on the fitted model object.
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
