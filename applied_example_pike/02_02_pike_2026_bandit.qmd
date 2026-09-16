@@ -492,7 +492,7 @@ get_draw_pair_correlations = function(fit, ids, pars = subj_pars, n_pairs = 4, s
   })
 }
 
-draw_pairs = get_draw_pair_correlations(fit_bandit_t1, ids_t1, subj_pars, n_pairs = 4) |>
+draw_pairs = get_draw_pair_correlations(fit_bandit_all, ids_all, subj_pars, n_pairs = 4) |>
   mutate(
     parameter = case_when(
       parameter == "Arew" ~ "Reward\n Learning Rate",
@@ -810,6 +810,111 @@ comparison_no_t2 %>%
     )
 
 ggsave("02_pike_reliability_comparson_no_t2ort1.png", width = 7, height = 4, dpi = 800)
+```
+
+# Communicating uncertainty in RMU
+
+A single point estimate and interval for RMU can undersell how much uncertainty there is about whether a parameter's reliability is actually good enough to use. Since RMU itself has a full posterior distribution (`rel$reliability_posterior_draws`), we can instead ask what proportion of that posterior falls in conventional "poor" (< .6), "okay" (.6-.8), and "good" (> .8) reliability bands. We do this for the T1 RMU estimates from the full sample (N = 547) computed [above](#full-t1-sample-n-547).
+
+```{r rmu-density-bands-draws}
+rmu_band_breaks = c(-Inf, 0.6, 0.8, Inf)
+rmu_band_labels = c("Poor (< .6)", "Okay (.6-.8)", "Good (> .8)")
+
+extract_rmu_draws = function(fit, ids, session_label, pars = subj_pars) {
+  map_dfr(pars, function(p) {
+    rel = reliability(get_draws_matrix(fit, ids, p))
+    tibble(
+      parameter = p,
+      method    = session_label,
+      rmu_draw  = rel$reliability_posterior_draws
+    )
+  })
+}
+
+rmu_draws_full_sample = extract_rmu_draws(
+  fit_bandit_all, ids_all, paste0("Full T1 sample, N = ", length(ids_all))
+) %>%
+  mutate(band = cut(rmu_draw, breaks = rmu_band_breaks, labels = rmu_band_labels, right = FALSE))
+```
+
+## Table: posterior probability RMU falls in each band
+
+```{r rmu-density-bands-table}
+rmu_band_table = rmu_draws_full_sample %>%
+  count(parameter, band) %>%
+  group_by(parameter) %>%
+  mutate(proportion = n / sum(n)) %>%
+  ungroup() %>%
+  select(-n) %>%
+  pivot_wider(names_from = band, values_from = proportion, values_fill = 0) %>%
+  mutate(
+    parameter = case_when(
+      parameter == "Arew" ~ "Reward Learning Rate",
+      parameter == "Apun" ~ "Punishment Learning Rate",
+      parameter == "R"    ~ "Reward Sensitivity",
+      parameter == "P"    ~ "Punishment Sensitivity"
+    )
+  ) %>%
+  select(parameter, all_of(rmu_band_labels))
+
+rmu_band_table %>%
+  gt() %>%
+  fmt_percent(columns = all_of(rmu_band_labels), decimals = 1) %>%
+  data_color(
+    columns = all_of(rmu_band_labels),
+    fn = scales::col_numeric(palette = c("#f8d7da", "#fff3cd", "#d4edda"), domain = c(0, 1))
+  ) %>%
+  cols_label(parameter = "Parameter") %>%
+  tab_header(
+    title = "Posterior probability RMU falls in each reliability band",
+    subtitle = paste0("T1, full sample, N = ", length(ids_all))
+  )
+```
+
+## Plot: posterior density of RMU, shaded by band
+
+```{r rmu-density-bands-plot}
+compute_band_density = function(draws, breaks = rmu_band_breaks, labels = rmu_band_labels, n = 512) {
+  d = density(draws, from = 0, to = 1, n = n)
+  tibble(x = d$x, y = d$y) %>%
+    mutate(band = cut(x, breaks = breaks, labels = labels, right = FALSE))
+}
+
+rmu_density_df = rmu_draws_full_sample %>%
+  group_by(parameter) %>%
+  group_modify(~ compute_band_density(.x$rmu_draw)) %>%
+  ungroup() %>%
+  mutate(
+    parameter = case_when(
+      parameter == "Arew" ~ "Reward\n Learning Rate",
+      parameter == "Apun" ~ "Punishment\n Learning Rate",
+      parameter == "R"    ~ "Reward\n Sensitivity",
+      parameter == "P"    ~ "Punishment\n Sensitivity"
+    )
+  )
+
+rmu_density_df %>%
+  ggplot(aes(x = x, y = y)) +
+  geom_area(aes(fill = band), position = "identity", color = NA) +
+  geom_line(aes(group = parameter), color = "black", linewidth = 0.3) +
+  facet_wrap(~parameter, nrow = 1, scales = "free_y") +
+  scale_fill_manual(values = c(
+    "Poor (< .6)"  = "#f28e8e",
+    "Okay (.6-.8)" = "#ffe08a",
+    "Good (> .8)"  = "#8fd19e"
+  )) +
+  labs(
+    title = "Posterior density of RMU, by reliability band",
+    subtitle = paste0("T1, full sample, N = ", length(ids_all)),
+    x = "RMU", y = "Posterior density", fill = "Reliability"
+  ) +
+  theme_minimal(base_size = 9) +
+  theme(
+    legend.position = "bottom",
+    strip.text      = element_text(size = 8)
+  )
+
+ggsave("02_pike_rmu_density_bands.png", width = 7.5, height = 3, dpi = 800)
 ```
 
 # Appendix: the Stan model
