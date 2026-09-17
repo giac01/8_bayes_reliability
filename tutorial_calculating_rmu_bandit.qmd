@@ -278,6 +278,140 @@ This prints a summary table directly, and also returns a named list (one element
 rel_auto$Arew$hdci
 ```
 
+# How to calculate RMU on rescaled parameters
+
+RMU (like an ICC) is not invariant to nonlinear transformations. It is important to calculate RMU using the same scaling that will be used in the main analysis. 
+
+The analysis model actually creates the sensitivity and learning rate parameters by transforming normally distributed variables $z^{r}_i, z^{p}_i, z^{P}_i, z^{R}_i$ through the inverse-cumulative distribution version $\Phi(\cdot)$ -- see the [hierarchical priors](applied_example_pike/02_02_pike_2026_bandit.html#hierarchical-priors-non-centred-parameterisation) section of the full applied example for the Stan code this comes from. 
+
+$$
+\alpha^{r}_i = \Phi(\mu_1 + \sigma_1 z^{r}_i), \quad
+\alpha^{p}_i = \Phi(\mu_2 + \sigma_2 z^{p}_i), \quad
+R_i = 30 \cdot \Phi(\mu_3 + \sigma_3 z^{R}_i), \quad
+P_i = 30 \cdot \Phi(\mu_4 + \sigma_4 z^{P}_i)
+$$
+
+We can run that transformation in reverse, dividing the sensitivities (`R`, `P`) by 30 to bring them back onto $(0,1)$, then applying the normal inverse CDF (`qnorm()`) to every posterior draw -- to recover each participant's posterior draws on the original unconstrained ("probit") scale, and check whether RMU computed on that scale differs from RMU computed on the native $(0,1)$/$(0,30)$ scale we used above.
+
+Instead of using this transformation, you can use whatever function is appropriate in your case (e.g., log-transform, logit).
+
+## Scaling the posterior draws
+
+We pull each parameter's draws out as its own participants x draws matrix, then transform each one by hand. Writing this out one parameter at a time, rather than wrapping it in a helper function, makes it easy to see exactly what happens to each parameter:
+
+```{r}
+eps = 1e-6  # a handful of draws hit exactly 0 or 1 (Phi_approx saturation) -> qnorm(0/1) = +-Inf
+
+# native scale: participants x draws matrices, straight off the fitted model
+draws_Arew = unclass(fit_bandit$fit$draws(variables = "Arew", format = "matrix")) |> t()
+draws_Apun = unclass(fit_bandit$fit$draws(variables = "Apun", format = "matrix")) |> t()
+draws_R    = unclass(fit_bandit$fit$draws(variables = "R",    format = "matrix")) |> t()
+draws_P    = unclass(fit_bandit$fit$draws(variables = "P",    format = "matrix")) |> t()
+
+# probit (z) scale: invert Phi() by hand for each parameter
+# Arew, Apun are already on (0, 1); R, P need dividing by 30 first
+draws_Arew_z = qnorm(pmin(pmax(draws_Arew,      eps), 1 - eps))
+draws_Apun_z = qnorm(pmin(pmax(draws_Apun,      eps), 1 - eps))
+draws_R_z    = qnorm(pmin(pmax(draws_R / 30,    eps), 1 - eps))
+draws_P_z    = qnorm(pmin(pmax(draws_P / 30,    eps), 1 - eps))
+```
+
+## Posterior densities: native vs. probit-transformed scale
+
+To see what this transform does, we plot per-participant posterior densities before and after, for a subset of participants. `matrix_to_long()` below is purely for reshaping a matrix into the long format `ggplot()` wants -- it doesn't do any rescaling itself:
+
+```{r}
+ids      = fit_bandit$all_ind_pars$subjID
+plot_ids = ids[1:30]  # a subset, for a readable plot
+
+matrix_to_long = function(m, parameter_name) {
+  rownames(m) = as.character(ids)  # as.character() so we subset rows by id below, not by row position
+  colnames(m) = paste0("draw", seq_len(ncol(m)))
+  m[as.character(plot_ids), , drop = FALSE] |>
+    as_tibble(rownames = "id") |>
+    pivot_longer(-id, names_to = "draw", values_to = "value") |>
+    mutate(parameter = parameter_name)
+}
+
+draws_native_long = bind_rows(
+  matrix_to_long(draws_Arew, "Arew"),
+  matrix_to_long(draws_Apun, "Apun"),
+  matrix_to_long(draws_R,    "R"),
+  matrix_to_long(draws_P,    "P")
+) |>
+  mutate(parameter = factor(parameter, levels = subj_pars))
+
+draws_probit_long = bind_rows(
+  matrix_to_long(draws_Arew_z, "Arew"),
+  matrix_to_long(draws_Apun_z, "Apun"),
+  matrix_to_long(draws_R_z,    "R"),
+  matrix_to_long(draws_P_z,    "P")
+) |>
+  mutate(parameter = factor(parameter, levels = subj_pars))
+
+plot_subject_densities = function(draws_long, title, color) {
+  draws_long |>
+    ggplot(aes(x = value, group = id)) +
+    geom_density(alpha = 0.1, linewidth = 0.3, color = color) +
+    facet_wrap(~parameter, scales = "free", nrow = 1) +
+    labs(title = title, x = NULL, y = "Density") +
+    theme_bw()
+}
+
+plot_subject_densities(draws_native_long, "Native scale -- Arew/Apun in [0,1], R/P in [0,30]", "steelblue")
+```
+
+```{r}
+plot_subject_densities(draws_probit_long, "Probit-transformed scale -- qnorm(Arew), qnorm(Apun), qnorm(R/30), qnorm(P/30)", "darkorange")
+```
+
+Same participants, same underlying posterior -- just a different (monotonic, one-to-one) scale for each draw.
+
+## RMU on the probit-transformed scale
+
+`reliability()` doesn't care what scale a matrix is on -- we just pass it each transformed matrix in turn:
+
+```{r}
+set.seed(42)
+
+rel_Arew_z = reliability(draws_Arew_z)
+rel_Apun_z = reliability(draws_Apun_z)
+rel_R_z    = reliability(draws_R_z)
+rel_P_z    = reliability(draws_P_z)
+
+rel_manual_transformed = tibble(
+  parameter = c("Arew", "Apun", "R", "P"),
+  rmu       = c(rel_Arew_z$hdci$rmu_estimate,    rel_Apun_z$hdci$rmu_estimate,    rel_R_z$hdci$rmu_estimate,    rel_P_z$hdci$rmu_estimate),
+  lower     = c(rel_Arew_z$hdci$hdci_lowerbound, rel_Apun_z$hdci$hdci_lowerbound, rel_R_z$hdci$hdci_lowerbound, rel_P_z$hdci$hdci_lowerbound),
+  upper     = c(rel_Arew_z$hdci$hdci_upperbound, rel_Apun_z$hdci$hdci_upperbound, rel_R_z$hdci$hdci_upperbound, rel_P_z$hdci$hdci_upperbound)
+)
+
+rel_manual_transformed |>
+  gt() |>
+  fmt_number(columns = c(rmu, lower, upper), decimals = 3)
+```
+
+## Comparing native-scale and probit-transformed RMU
+
+```{r}
+rmu_scale_comparison = bind_rows(
+  rel_manual             |> mutate(scale = "Native scale"),
+  rel_manual_transformed |> mutate(scale = "Probit-transformed (qnorm)")
+)
+
+rmu_scale_comparison |>
+  ggplot(aes(x = parameter, y = rmu, color = scale, shape = scale)) +
+  geom_pointrange(aes(ymin = lower, ymax = upper), position = position_dodge(width = 0.4)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(
+    x = NULL, y = "RMU estimate", color = "Scale", shape = "Scale",
+    title = "RMU: native scale vs. probit-transformed parameters"
+  ) +
+  theme_bw()
+```
+
+Here they line up closely, but that won't always be true -- when RMU differs noticeably by scale, it's a sign that "how reliable is this parameter" doesn't have one scale-free answer, and the scale you report reliability on should be the one you'll actually use in downstream analyses. For a full write-up of this same check on the much larger full T1 sample (N = 547), including per-band posterior probability tables, see [the applied example](applied_example_pike/02_02_pike_2026_bandit.html#does-rescaling-parameters-change-reliability-estimates).
+
 # Wrap-up
 
 Check the convergence diagnostics above before reading much into the reliability estimates -- if Rhat/ESS look healthy and there are no divergent transitions, the numbers above are a reasonable single-fit estimate of RMU reliability for this task and sample. For a more thoroughly-checked version of this exact model on this exact data (checked against test-retest and split-half reliability, and against a fit to the full N = 547 sample), see `applied_example_pike/02_02_pike_2026_bandit.qmd`.
