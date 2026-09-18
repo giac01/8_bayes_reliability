@@ -1,0 +1,1 @@
+printf '%s\n' tutorial_*.qmd | xargs -P 4 -I{} sh -c 'quarto render "{}" > "{}.log" 2>&1 && echo "OK: {}" || echo "FAIL: {}"'
