@@ -1,0 +1,282 @@
+---
+title: "Study 1 (Heywood cases removed): Overall performance tables"
+author: "Giacomo Bignardi"
+cache: false
+freeze: true
+format:
+  html:
+    embed-resources: true
+    toc: true
+    code-fold: true
+execute:
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    cache.lazy: false
+---
+
+# Background
+
+This is a variant of `2_study1_2_analysis.R`'s two "Overall Performance" tables (test-retest reliability estimand, and population coefficient H estimand), re-run after removing Heywood cases for the EFA coefficient H estimator ("h"): any row with `est >= 1` for that estimator is dropped before summarising.
+
+Analyses are run inside the [`bignardig/tidyverse461:v5`](https://hub.docker.com/r/bignardig/tidyverse461) Docker container.
+
+```{r setup}
+library(tidyverse)
+library(gt)
+
+rm(list = ls(all.names = TRUE))
+```
+
+# Load Data
+
+## Loading conditions used in the simulation
+
+```{r loading-conditions}
+loadings_list = list(
+  c( 0, 0, 0, 0, 0, 0),
+  c(.1,.1,.1,.1,.1),
+  c(.3,.2,.1),
+  c(.4,.3,.3,.2,.1,.0),
+  c(.4,.4,.4,.4),
+  c(.6,.5,.4,.3,.2),
+  c(.7,.6,.5,.5,.5,.4,.4,.3,.3)
+)
+
+loadings_list_paste = lapply(loadings_list, function(x) paste0(x, collapse = "_")) %>% unlist()
+```
+
+## Read raw simulation results
+
+```{r load-results}
+# I ran the simulation code multiple times on the cluster, so we have several results files we want to join
+
+results_path = file.path("results","study1_results")
+results_files = list.files(results_path,
+                           pattern = ".rds",
+                           recursive = FALSE,
+                           full.names = TRUE
+                           )
+results = lapply(results_files, function(x) readRDS(x))
+results = do.call("c", results)
+```
+
+## Build results_table (wide, one row per replicate)
+
+```{r build-results-table}
+results_table = data.frame(i = 1:length(results))
+
+results_table$sample_sizes    = sapply(results, function(x) x$settings$n) %>% as.numeric()
+results_table$n_items         = sapply(results, function(x) length(x$settings$loadings)) %>% as.numeric()
+results_table$loadings        = sapply(results, function(x) paste0(x$settings$loadings, collapse = "_"))
+results_table$loading_set     = match(results_table$loadings , loadings_list_paste)
+
+results_table$pop_coefh         = sapply(results, function(x) x$population_reliability) %>% as.numeric()    # Population coefficient H
+results_table$pop_ss_loading    = sapply(results, function(x) sum(x$settings$loadings^2)) %>% as.numeric()
+
+# Test-retest reliability: correlation between the Bayesian factor scores estimated
+# at t1 and t2.
+results_table$test_retest_reliability = sapply(results, function(x) x$test_retest_reliability) %>% as.numeric()
+
+### T1 estimates
+results_table$rmu_est_t1  = sapply(results, function(x) x$rmu_est_t1$rmu_estimate) %>% as.numeric()
+results_table$rmu_lb_t1   = sapply(results, function(x) x$rmu_est_t1$hdci_lowerbound) %>% as.numeric()
+results_table$rmu_ub_t1   = sapply(results, function(x) x$rmu_est_t1$hdci_upperbound) %>% as.numeric()
+
+results_table$h_est_t1    = sapply(results, function(x) x$h_reliability_t1$r) %>% as.numeric()
+results_table$h_lb_t1     = sapply(results, function(x) x$h_reliability_t1$ci[1]) %>% as.numeric()
+results_table$h_ub_t1     = sapply(results, function(x) x$h_reliability_t1$ci[2]) %>% as.numeric()
+
+# a_lb_t1/a_ub_t1 recomputed from est +/- 1.96*se rather than MBESS's own
+# $ci.lower/$ci.upper, since MBESS::ci.reliability() clamps its reported
+# bounds to [0, 1] without adjusting $est - see 2_study1_2_analysis.R.
+results_table$a_est_t1    = sapply(results, function(x) x$alpha_reliability_t1$est) %>% as.numeric()
+results_table$a_se_t1     = sapply(results, function(x) x$alpha_reliability_t1$se)  %>% as.numeric()
+results_table$a_lb_t1     = results_table$a_est_t1 - qnorm(0.975)*results_table$a_se_t1
+results_table$a_ub_t1     = results_table$a_est_t1 + qnorm(0.975)*results_table$a_se_t1
+
+results_table$irth_est_t1 = sapply(results, function(x) x$mcmc_coefh_t1$mcmc_coef_h) %>% as.numeric()
+results_table$irth_lb_t1  = sapply(results, function(x) x$mcmc_coefh_t1$.lower) %>% as.numeric()
+results_table$irth_ub_t1  = sapply(results, function(x) x$mcmc_coefh_t1$.upper) %>% as.numeric()
+
+results_table$true_score_coverage_t1 = sapply(results, function(x) x$true_score_coverage_t1) %>% as.numeric()
+results_table$diag_divergences_t1    = sapply(results, function(x) x$diagnostics_divergences_t1) %>% as.numeric()
+results_table$diag_ebfmi_t1          = sapply(results, function(x) length(which(x$diagnostics_ebfmi_t1 < .2)))
+
+### T2 estimates
+results_table$rmu_est_t2  = sapply(results, function(x) x$rmu_est_t2$rmu_estimate) %>% as.numeric()
+results_table$rmu_lb_t2   = sapply(results, function(x) x$rmu_est_t2$hdci_lowerbound) %>% as.numeric()
+results_table$rmu_ub_t2   = sapply(results, function(x) x$rmu_est_t2$hdci_upperbound) %>% as.numeric()
+
+results_table$h_est_t2    = sapply(results, function(x) x$h_reliability_t2$r) %>% as.numeric()
+results_table$h_lb_t2     = sapply(results, function(x) x$h_reliability_t2$ci[1]) %>% as.numeric()
+results_table$h_ub_t2     = sapply(results, function(x) x$h_reliability_t2$ci[2]) %>% as.numeric()
+
+results_table$a_est_t2    = sapply(results, function(x) x$alpha_reliability_t2$est) %>% as.numeric()
+results_table$a_se_t2     = sapply(results, function(x) x$alpha_reliability_t2$se)  %>% as.numeric()
+results_table$a_lb_t2     = results_table$a_est_t2 - qnorm(0.975)*results_table$a_se_t2
+results_table$a_ub_t2     = results_table$a_est_t2 + qnorm(0.975)*results_table$a_se_t2
+
+results_table$irth_est_t2 = sapply(results, function(x) x$mcmc_coefh_t2$mcmc_coef_h) %>% as.numeric()
+results_table$irth_lb_t2  = sapply(results, function(x) x$mcmc_coefh_t2$.lower) %>% as.numeric()
+results_table$irth_ub_t2  = sapply(results, function(x) x$mcmc_coefh_t2$.upper) %>% as.numeric()
+
+results_table$true_score_coverage_t2 = sapply(results, function(x) x$true_score_coverage_t2) %>% as.numeric()
+results_table$diag_divergences_t2    = sapply(results, function(x) x$diagnostics_divergences_t2) %>% as.numeric()
+results_table$diag_ebfmi_t2          = sapply(results, function(x) length(which(x$diagnostics_ebfmi_t2 < .2)))
+
+results_table$sample_sizes = factor(results_table$sample_sizes)
+```
+
+# Reshape to Long Format
+
+```{r reshape-long}
+## Stack t1/t2 into long format
+# `rowid` identifies the original replicate and is shared across its t1/t2 rows.
+
+results_table_stacked = results_table %>%
+  rename(rowid = i) %>%
+  pivot_longer(
+    cols = matches("_t[12]$"),
+    names_to = c(".value", "time"),
+    names_pattern = "(.*)_t([12])"
+  ) %>%
+  mutate(
+    time = paste0("t", time),
+    diag_divergences_binary = as.numeric(diag_divergences > 0),
+    diag_ebfmi_binary       = as.numeric(diag_ebfmi > 0)
+  )
+
+## Pivot longer over estimator name
+results_table_long = results_table_stacked %>%
+  pivot_longer(cols = c(rmu_est, h_est, a_est, irth_est,
+                        rmu_lb, h_lb, a_lb, irth_lb,
+                        rmu_ub, h_ub, a_ub, irth_ub
+                        ), names_to = c("name", ".value"), names_pattern = "(rmu|h|a|irth)_(.*)")
+```
+
+# Remove Heywood Cases (EFA Coefficient H)
+
+Heywood cases for the factor analysis H estimator ("h") show up as reliability estimates `>= 1`. We drop those rows before summarising, leaving the other three estimators (RMU, coefficient alpha, IRT H) untouched.
+
+```{r remove-heywood}
+n_heywood = results_table_long %>%
+  filter(name == "h", est >= 1) %>%
+  nrow()
+
+results_table_long = results_table_long %>%
+  filter(!(name == "h" & est >= 1))
+
+n_heywood
+```
+
+`r n_heywood` Heywood case(s) (EFA coefficient H estimates `>= 1`) were removed.
+
+# Performance Metrics
+
+## Overall Performance: test-retest reliability estimand
+
+```{r overall-performance-testretest}
+results_table_long %>%
+  group_by(name, loading_set, sample_sizes) %>%
+  mutate(
+    name       = factor(name, levels = c("rmu","a","h","irth"),
+                        labels = c("RMU", "coefficient alpha", "factor analysis H", "IRT H")),
+    estimand   = mean(test_retest_reliability)        # mean test-retest correlation within this sample size / loading condition
+  ) %>%
+  ungroup() %>%
+  group_by(name) %>%
+  mutate(
+    difference = est - estimand,
+    ci_correct = (lb <= estimand & ub >= estimand),
+    ci_length  = ub - lb
+  ) %>%
+  summarise(
+
+    n              = n(),
+
+    # Empirical Standard Error (point estimate only)
+    EmpSE          = sd(est),
+
+    # Bias
+    bias           = mean(difference),
+
+    # Root Mean Squared Error
+    RMSE           = sqrt(mean((difference)^2)),
+
+    # Coverage
+    coverage       = length(which(ci_correct))/length(ci_correct),
+
+    mean_ci_length = mean(ci_length)
+
+  ) %>%
+  ungroup() %>%
+  select(name, n, RMSE, bias, EmpSE, coverage, mean_ci_length) %>%
+  gt() %>%
+  gt::fmt(columns = !c(name, n), fns = ~ gbtoolbox::apa_num(., n_decimal_places = 3)) %>%
+  cols_label(
+    mean_ci_length ~ "Avg CI Length"
+  ) %>%
+  tab_footnote(
+    footnote = html("<b>n</b> = number of simulations included after removing Heywood cases (t1 and t2 estimates counted separately).
+                <b>RMSE</b> = Root Mean Squared Error of the estimate around the estimand.
+                <b>bias</b> = mean(estimate &minus; estimand).
+                <b>EmpSE</b> = empirical standard deviation of the estimates across simulations.
+                <b>coverage</b> = proportion of simulations where the estimator's own 95% CI/CrI contained the estimand, which should be close to 95%.
+                <b>Avg CI Length</b> = mean width of the estimator's own 95% CI/CrI.
+                <b>estimand</b> = test-retest reliability, i.e. the correlation between the Bayesian factor scores estimated at t1 and t2, averaged within each sample size / loading condition."
+    )
+  )
+```
+
+## Maximal Reliability: population coefficient H estimand
+
+```{r overall-performance-coefh}
+results_table_long %>%
+  mutate(
+    name       = factor(name, levels = c("rmu","a","h","irth"),
+                        labels = c("RMU", "coefficient alpha", "factor analysis H", "IRT H")),
+    estimand   = pop_coefh,
+    difference = est - estimand,
+    ci_correct = (lb <= estimand & ub >= estimand),
+    ci_length  = ub - lb,
+  ) %>%
+  group_by(name) %>%
+  summarise(
+
+    n              = n(),
+
+    # Empirical Standard Error (point estimate only)
+    EmpSE          = sd(est),
+
+    # Bias
+    bias           = mean(difference),
+
+    # Root Mean Squared Error
+    RMSE           = sqrt(mean((difference)^2)),
+
+    # Coverage
+    coverage       = length(which(ci_correct))/length(ci_correct),
+
+    mean_ci_length = mean(ci_length)
+
+  ) %>%
+  ungroup() %>%
+  select(name, n, RMSE, bias, EmpSE, coverage, mean_ci_length) %>%
+  gt() %>%
+  gt::fmt(columns = !c(name, n), fns = ~ gbtoolbox::apa_num(., n_decimal_places = 3)) %>%
+  cols_label(
+    mean_ci_length ~ "Avg CI Length"
+  ) %>%
+  tab_footnote(
+    footnote = html("<b>n</b> = number of simulations included after removing Heywood cases (t1 and t2 estimates counted separately).
+                <b>RMSE</b> = Root Mean Squared Error of the estimate around the estimand.
+                <b>bias</b> = mean(estimate &minus; estimand).
+                <b>EmpSE</b> = empirical standard deviation of the estimates across simulations.
+                <b>coverage</b> = proportion of simulations where the estimator's own 95% CI/CrI contained the estimand, which should be close to 95%.
+                <b>Avg CI Length</b> = mean width of the estimator's own 95% CI/CrI.
+                <b>estimand</b> = population coefficient H (maximal reliability)."
+    )
+  )
+```
