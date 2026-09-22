@@ -38,7 +38,12 @@ params_list <- expand.grid(
 ) 
 
 # Note that above aren't the learning rate sd, to work it out use:
-# sd(g_normaluniform(400000000, .5, learning_rate_sd)
+# sd(g_normaluniform(400000000, .2, .25))
+# sd(g_normaluniform(400000000, .2, .50))
+
+# mean(g_normaluniform(1000000,.2,.25))
+# mean(g_normaluniform(1000000,.2,.5))
+
 
 print(params_list)
 print(run_rep_env)

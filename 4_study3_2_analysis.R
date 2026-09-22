@@ -14,6 +14,12 @@ library(clubSandwich)
 
 rm(list = ls(all.names = TRUE))
 
+# When run non-interactively (e.g. `Rscript` in Docker), auto-printed ggplot
+# objects fall back to a pdf() device that writes "Rplots.pdf" into the cwd,
+# which fails if the cwd isn't writable. A null device avoids that while
+# leaving interactive viewing (RStudio) untouched.
+if (!interactive()) pdf(NULL)
+
 # Cluster-robust SE of a mean, clustering by sim_id -----------------------------
 
 # results_table has two rows per simulation (t1/t2 waves) that share the same
@@ -21,7 +27,11 @@ rm(list = ls(all.names = TRUE))
 # formulas below (e.g. sqrt(1/(n*(n-1))*sum((est-mean)^2))) assume iid rows, so
 # they understate the Monte Carlo SE of bias/MSE/coverage. This replaces them
 # with a cluster-robust (CR2) SE of the mean, via a trivial intercept-only lm().
-# Mirrors 3_study2_2_analysis.R.
+# Mirrors 2_study1_2_analysis.R / 3_study2_2_analysis.R.
+#
+# EmpSE is reported as a point estimate only: the usual sd(x)/sqrt(2*(n-1))
+# interval assumes iid rows and is anti-conservative here, so no interval is
+# given rather than a misleading one. Same in Studies 1 & 2.
 
 cluster_se_mean = function(x, cluster){
   fit = lm(x ~ 1)
@@ -172,7 +182,6 @@ results_table %>%
     estimand   = mean(test_retest_reliability)
   ) %>%
   ungroup() %>%
-  group_by(learning_rate_sd, n_trials, sample_sizes) %>%       # aggregating over waves (t1/t2); performance metrics still broken down by sample size
   mutate(
     difference = rmp_est - estimand,
     ci_correct = (rmp_lb <= estimand & rmp_ub >= estimand),
@@ -190,10 +199,7 @@ results_table %>%
     bias_lb     = bias - qnorm(0.975)*bias_se,
     bias_ub     = bias + qnorm(0.975)*bias_se,
 
-    EmpSE       = sd(rmp_est),
-    EmpSE_se    = EmpSE/sqrt(2*(n-1)),
-    EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
-    EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
+    EmpSE       = sd(rmp_est),                                          # point estimate only - see header
 
     mad         = mean(abs(difference)),
 
@@ -217,7 +223,63 @@ results_table %>%
     perc_diag_ebfmi_binary       = sum(diag_ebfmi_binary)/n
   )  %>%
   ungroup() %>%
-  knitr::kable(digits = 3)
+  gt() %>%
+  gt::fmt(columns = !c(n), fns = ~ gbtoolbox::apa_num(., n_decimal_places = 3)) %>%
+  gtsave(filename = file.path("results_tables","4_study3_overall_performance.html"))
+
+## Overall Performance by sample size ONLY ---------------------------------------------------------
+
+results_table %>%
+  group_by(learning_rate_sd, n_trials) %>%       # estimand pooled across sample_sizes since it doesn't meaningfully vary with n
+  mutate(
+    estimand   = mean(test_retest_reliability)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    difference = rmp_est - estimand,
+    ci_correct = (rmp_lb <= estimand & rmp_ub >= estimand),
+    ci_length  = rmp_ub - rmp_lb
+  ) %>%
+  group_by(sample_sizes) %>%
+  summarise(
+    n = n(),
+    estimand    = mean(estimand),
+    estimand_sd = sd(test_retest_reliability),
+    
+    mean        = mean(rmp_est),
+    
+    bias        = mean(difference),
+    # bias_se     = cluster_se_mean(difference, sim_id),                  # cluster-robust (CR2), clustered by sim_id
+    # bias_lb     = bias - qnorm(0.975)*bias_se,
+    # bias_ub     = bias + qnorm(0.975)*bias_se,
+    # 
+    # EmpSE       = sd(rmp_est),                                          # point estimate only - see header
+    # 
+    # mad         = mean(abs(difference)),
+    # 
+    # MSE         = mean((difference)^2),
+    # MSE_se      = cluster_se_mean(difference^2, sim_id),                # cluster-robust (CR2), clustered by sim_id
+    # MSE_lb      = MSE - qnorm(0.975)*MSE_se,
+    # MSE_ub      = MSE + qnorm(0.975)*MSE_se,
+    # 
+    # RMSE        = sqrt(MSE),
+    # RMSE_lb     = sqrt(MSE_lb),
+    # RMSE_ub     = sqrt(MSE_ub),
+    # 
+    # coverage    = length(which(ci_correct))/length(ci_correct),
+    # coverage_se = cluster_se_mean(as.numeric(ci_correct), sim_id),      # cluster-robust (CR2), clustered by sim_id
+    # coverage_lb = coverage - qnorm(0.975)*coverage_se,
+    # coverage_ub = coverage + qnorm(0.975)*coverage_se,
+    # 
+    mean_ci_length   = mean(ci_length),
+    mean_ts_coverage = mean(avg_true_score_coverage),
+    perc_diag_divergences_binary = sum(diag_divergences_binary)/n,
+    perc_diag_ebfmi_binary       = sum(diag_ebfmi_binary)/n
+  )  %>%
+  ungroup() %>%
+  gt() %>%
+  gt::fmt(columns = !c(n), fns = ~ gbtoolbox::apa_num(., n_decimal_places = 3)) %>%
+  gtsave(filename = file.path("results_tables","4_study3_overall_performance_bysamplesize.html"))
 
 ## GT table of performance in each condition ------------------------------------
 
@@ -229,9 +291,11 @@ results_table_cleaned = results_table %>%
   ungroup() %>%
   group_by(learning_rate_sd, n_trials, sample_sizes) %>%       # aggregating over waves (t1/t2); performance metrics still broken down by sample size
   mutate(
-    difference = rmp_est - estimand,
-    ci_correct = (rmp_lb <= estimand & rmp_ub >= estimand),
-    ci_length  = rmp_ub - rmp_lb
+    difference    = rmp_est - estimand,
+    ci_correct    = (rmp_lb <= estimand & rmp_ub >= estimand),
+    ci_length     = rmp_ub - rmp_lb,
+    mean_est      = mean(rmp_est),
+    ci_be_correct = (rmp_lb <= mean_est & rmp_ub >= mean_est)
   ) %>%
   summarise(
     n = n(),
@@ -245,10 +309,7 @@ results_table_cleaned = results_table %>%
     bias_lb     = bias - qnorm(0.975)*bias_se,
     bias_ub     = bias + qnorm(0.975)*bias_se,
 
-    EmpSE       = sd(rmp_est),
-    EmpSE_se    = EmpSE/sqrt(2*(n-1)),
-    EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
-    EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
+    EmpSE       = sd(rmp_est),                                          # point estimate only - see header
 
     mad         = mean(abs(difference)),
 
@@ -266,6 +327,12 @@ results_table_cleaned = results_table %>%
     coverage_lb = coverage - qnorm(0.975)*coverage_se,
     coverage_ub = coverage + qnorm(0.975)*coverage_se,
 
+    # Bias eliminated coverage
+    coverage_be    = length(which(ci_be_correct))/length(ci_be_correct),
+    coverage_be_se = cluster_se_mean(as.numeric(ci_be_correct), sim_id),
+    coverage_be_lb = coverage_be - qnorm(0.975)*coverage_be_se,
+    coverage_be_ub = coverage_be + qnorm(0.975)*coverage_be_se,
+
     mae         = mean(abs(difference)),
 
     mean_ci_length   = mean(ci_length),
@@ -281,7 +348,7 @@ results_table_cleaned = results_table %>%
     mean_dist_decision_noise     = mean(mean_dist_decision_noise)
   )  %>%
   ungroup() %>%
-  select(-estimand_sd, -coverage_se) %>%
+  select(-estimand_sd, -coverage_se, -coverage_be_se) %>%
   select(estimand, sample_sizes, learning_rate_sd, everything())
 
 table_performance_comparison = results_table_cleaned %>%
@@ -310,9 +377,7 @@ table_performance_comparison = results_table_cleaned %>%
     n            ~ "{{n_sim}}",
     estimand     ~ "estimand",
     n_trials     ~ "{{n_trials}}",
-    EmpSE    ~ "",
-    EmpSE_lb ~ "LB",
-    EmpSE_ub ~ "UB",
+    EmpSE    ~ "EmpSE",
     bias     ~ "",
     bias_lb  ~ "LB",
     bias_ub  ~ "UB",
@@ -322,6 +387,9 @@ table_performance_comparison = results_table_cleaned %>%
     coverage ~ "Cov.",
     coverage_lb  ~ "LB",
     coverage_ub  ~ "UB",
+    coverage_be    ~ "Cov. (BE)",
+    coverage_be_lb ~ "LB",
+    coverage_be_ub ~ "UB",
     mean_ci_length ~ md("Mean<br>Length"),
     mean_ts_coverage ~ md("True<br>Score<br>Coverage"),
     learning_rate_sd ~ "{{:sigma:_learnrate}}",
@@ -330,16 +398,17 @@ table_performance_comparison = results_table_cleaned %>%
   )  %>%
   tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
   tab_spanner(label = "RMSE 95% CI", columns = c(RMSE, RMSE_lb, RMSE_ub)) %>%
-  tab_spanner(label = "EmpSE 95% CI", columns = c(EmpSE, EmpSE_lb, EmpSE_ub)) %>%
   tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
+  tab_spanner(label = "Bias-Eliminated Coverage 95% CI", columns = c(coverage_be, coverage_be_lb, coverage_be_ub)) %>%
   tab_spanner(label = "Simulation Parameters", columns = c(estimand, learning_rate_sd, n_trials, sample_sizes, n)) %>%
-  tab_spanner(label = "Estimator Performance", columns = c(RMSE, RMSE_lb, RMSE_ub, bias, bias_lb, bias_ub, EmpSE, EmpSE_lb, EmpSE_ub)) %>%
-  tab_spanner(label = "Credible Interval Performance", columns = c(coverage, coverage_lb, coverage_ub, mean_ci_length)) %>%
+  tab_spanner(label = "Estimator Performance", columns = c(RMSE, RMSE_lb, RMSE_ub, bias, bias_lb, bias_ub, EmpSE)) %>%
+  tab_spanner(label = "Credible Interval Performance", columns = c(coverage, coverage_lb, coverage_ub, coverage_be, coverage_be_lb, coverage_be_ub, mean_ci_length)) %>%
   tab_footnote(
-    footnote = html("<b>n<sub>sim</sub></b> = number of simulations completed for this set of simulation parameters.
+    footnote = html("<b>n<sub>sim</sub></b> = number of simulations completed for this set of simulation parameters (t1 and t2 estimates counted separately).
                 <b>n<sub>obs</sub></b> = number of subjects per simulation.
                 <b>RMSE</b> = Root Mean Squared Error.
                 <b>Coverage</b> = proportion of times the 95% credible intervals include the estimand, which should be around 95%.
+                <b>Cov. (BE)</b> = bias-eliminated coverage, i.e. coverage of the 95% credible intervals around the mean estimate (rather than the estimand), which isolates interval calibration from estimator bias.
                 <b>estimand</b> = test-retest reliability, i.e. the mean correlation between Bayesian learning-rate point-estimates at t1 and t2, pooled across all sample sizes for a given combination of trial number and learning-rate SD.
                 <b>Mean Length</b> = Mean length of credible interval.
                 <b>σ<sub>learnrate</sub></b> = standard deviation of population true learning rates across subjects.
@@ -411,10 +480,12 @@ gtsave(table_estimand_modelcomparison, filename = file.path("results_tables", "4
 
 # Test if RMPs are clustered by simulation condition ---------------------------
 
-mod = results_table |>
-  lme4::lmer(rmp_est ~ 1 + (1 | sim_id), data = _)
-
-performance::icc(mod)
+if (FALSE){
+  mod = results_table |>
+    lme4::lmer(rmp_est ~ 1 + (1 | sim_id), data = _)
+  
+  performance::icc(mod)
+}
 
 # Check for any identical seeds ------------------------------------------------
 # Collapse each seed vector to a string key and use duplicated() to find repeats
@@ -448,7 +519,7 @@ n_trials_labels <- c(
 learning_rate_labels <- c(
   "0"   = "Learning Rate SD = 0",
   "0.25" = "Learning Rate SD = 0.070",
-  "0.50" = "Learning Rate SD = 0.138"
+  "0.5" = "Learning Rate SD = 0.138"
 )
 
 plot_violinplot = results_table %>%
@@ -489,8 +560,8 @@ plot_violinplot = results_table %>%
     aes(
       xmin = .5,
       xmax = 2.5,
-      ymin = ifelse(learning_rate_sd == 0.4 & n_trials > 100, .06, 0.69),
-      ymax = ifelse(learning_rate_sd == 0.4 & n_trials > 100, 0.27, 0.91)
+      ymin = ifelse(learning_rate_sd == 0.5 & n_trials > 100, .06, 0.69),
+      ymax = ifelse(learning_rate_sd == 0.5 & n_trials > 100, 0.27, 0.91)
     ),
     fill = "white",
     alpha = 0.4
@@ -498,7 +569,7 @@ plot_violinplot = results_table %>%
   geom_text(
     data = results_table_cleaned,
     aes(
-      y = ifelse(learning_rate_sd == 0.4 & n_trials >= 200, 0, 0.89),
+      y = ifelse(learning_rate_sd == 0.5 & n_trials >= 180, 0, 0.89),
       x = factor(sample_sizes),
       label = paste0(
         "B = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", bias)), "\n",
@@ -506,8 +577,8 @@ plot_violinplot = results_table %>%
         "C = ", gsub("^(-?)0\\.", "\\1\\.", sprintf("%.3f", coverage)), "\n"
       )
     ),
-    vjust = ifelse(results_table_cleaned$learning_rate_sd == 0.4 &
-                     results_table_cleaned$n_trials >= 200, 0, 1),
+    vjust = ifelse(results_table_cleaned$learning_rate_sd == 0.5 &
+                     results_table_cleaned$n_trials >= 180, 0, 1),
     hjust = 1,
     size = 2.6,
     position = position_nudge(x=.42),
@@ -574,8 +645,8 @@ ggsave(file.path("plots","4_study3_ci_plot_rmp.pdf"), plot = plot_ci_rmp, width 
 
 source(file.path("helper_functions","g_normaluniform.R"))
 
-sd(g_normaluniform(400000000, .2, .2)) # SD of learning rate in second condition
-sd(g_normaluniform(400000000, .2, .4)) # SD of learning rate in third condition
+sd(g_normaluniform(400000000, .2, .25)) # SD of learning rate in second condition, 0.070
+sd(g_normaluniform(400000000, .2, .50)) # SD of learning rate in third condition, 0.138
 
 n = 1000000
 d1 = g_normaluniform(n, .2, 0)
@@ -593,7 +664,7 @@ ggplot(data.frame(d1 = d1), aes(x = d1)) +
 ggsave(file.path("plots","4_learningrate_density_1.png"),width = 4, height = 3)
 
 n = 10000000
-d1 = g_normaluniform(n, .2, .2)
+d1 = g_normaluniform(n, .2, .25)
 
 ggplot(data.frame(d1 = d1), aes(x = d1)) +
   geom_density(fill = "grey", alpha = 1) +
@@ -608,7 +679,7 @@ ggplot(data.frame(d1 = d1), aes(x = d1)) +
 ggsave(file.path("plots","4_learningrate_density_2.png"),width = 4, height = 3)
 
 n = 10000000
-d1 = g_normaluniform(n, .2, .4)
+d1 = g_normaluniform(n, .2, .50)
 
 ggplot(data.frame(d1 = d1), aes(x = d1)) +
   geom_density(fill = "grey", alpha = 1) +

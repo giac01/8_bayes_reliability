@@ -15,6 +15,12 @@ library(clubSandwich)
 
 rm(list = ls(all.names = TRUE))
 
+# When run non-interactively (e.g. `Rscript` in Docker), auto-printed ggplot
+# objects fall back to a pdf() device that writes "Rplots.pdf" into the cwd,
+# which fails if the cwd isn't writable. A null device avoids that while
+# leaving interactive viewing (RStudio) untouched.
+if (!interactive()) pdf(NULL)
+
 # Helper Functions -----------------------------------------------------------------
 
 ## Cluster-robust SE of a mean, clustering by rowid (replicate) ------------------
@@ -24,6 +30,10 @@ rm(list = ls(all.names = TRUE))
 # so they mis-state the SE of bias/MSE/coverage. This replaces them with a
 # cluster-robust (CR2) SE of the mean, via a trivial intercept-only lm().
 # Mirrors 3_study2_2_analysis.R / 4_study3_2_analysis.R.
+#
+# EmpSE is reported as a point estimate only: the usual sd(x)/sqrt(2*(n-1))
+# interval assumes iid rows and is anti-conservative here, so no interval is
+# given rather than a misleading one. Same in Studies 2 & 3.
 
 cluster_se_mean = function(x, cluster){
   fit = lm(x ~ 1)
@@ -48,6 +58,12 @@ loadings_list_paste = lapply(loadings_list, function(x) paste0(x, collapse = "_"
 
 loadings_list_pretty  = lapply(loadings_list, function(x) paste0(gbtoolbox::apa_num(x, n_decimal_places = 1), collapse = ", ")) %>% unlist()
 loadings_list_pretty2 = lapply(loadings_list, function(x) paste0("Loadings:", paste0(gbtoolbox::apa_num(x, n_decimal_places = 1), collapse = ", "))) %>% unlist()
+
+# All-zero loadings condition: no true common factor, so the sampled
+# test-retest correlation is pure noise around 0. Indexed by loading_set,
+# used below to clamp the test-retest estimand to 0 in that condition instead
+# of a noisy sample mean.
+loadings_all_zero = sapply(loadings_list, function(x) all(x == 0))
 
 ## Read raw simulation results ------------------------------------------------------
 
@@ -95,9 +111,9 @@ results_table$h_est_t1    = sapply(results, function(x) x$h_reliability_t1$r) %>
 results_table$h_lb_t1     = sapply(results, function(x) x$h_reliability_t1$ci[1]) %>% as.numeric()
 results_table$h_ub_t1     = sapply(results, function(x) x$h_reliability_t1$ci[2]) %>% as.numeric()
 
-results_table$a_est_t1    = sapply(results, function(x) x$alpha_reliability_t1$est) %>% as.numeric()
-results_table$a_lb_t1     = sapply(results, function(x) x$alpha_reliability_t1$ci.lower) %>% as.numeric()
-results_table$a_ub_t1     = sapply(results, function(x) x$alpha_reliability_t1$ci.upper) %>% as.numeric()
+results_table$a_est_t1    = sapply(results, function(x) x$alpha_reliability_t1$est)       %>% as.numeric()
+results_table$a_lb_t1     = sapply(results, function(x) x$alpha_reliability_t1$ci.lower)  %>% as.numeric()
+results_table$a_ub_t1     = sapply(results, function(x) x$alpha_reliability_t1$ci.upper)  %>% as.numeric()
 
 results_table$irth_est_t1 = sapply(results, function(x) x$mcmc_coefh_t1$mcmc_coef_h) %>% as.numeric()
 results_table$irth_lb_t1  = sapply(results, function(x) x$mcmc_coefh_t1$.lower) %>% as.numeric()
@@ -116,9 +132,9 @@ results_table$h_est_t2    = sapply(results, function(x) x$h_reliability_t2$r) %>
 results_table$h_lb_t2     = sapply(results, function(x) x$h_reliability_t2$ci[1]) %>% as.numeric()
 results_table$h_ub_t2     = sapply(results, function(x) x$h_reliability_t2$ci[2]) %>% as.numeric()
 
-results_table$a_est_t2    = sapply(results, function(x) x$alpha_reliability_t2$est) %>% as.numeric()
-results_table$a_lb_t2     = sapply(results, function(x) x$alpha_reliability_t2$ci.lower) %>% as.numeric()
-results_table$a_ub_t2     = sapply(results, function(x) x$alpha_reliability_t2$ci.upper) %>% as.numeric()
+results_table$a_est_t2    = sapply(results, function(x) x$alpha_reliability_t2$est)       %>% as.numeric()
+results_table$a_lb_t2     = sapply(results, function(x) x$alpha_reliability_t2$ci.lower)  %>% as.numeric()
+results_table$a_ub_t2     = sapply(results, function(x) x$alpha_reliability_t2$ci.upper)  %>% as.numeric()
 
 results_table$irth_est_t2 = sapply(results, function(x) x$mcmc_coefh_t2$mcmc_coef_h) %>% as.numeric()
 results_table$irth_lb_t2  = sapply(results, function(x) x$mcmc_coefh_t2$.lower) %>% as.numeric()
@@ -186,7 +202,7 @@ results_table_long %>%
   group_by(name, loading_set, sample_sizes) %>%
   mutate(
     name       = factor(name, levels = c("rmu","a","h","irth")),
-    estimand   = mean(test_retest_reliability),        # mean test-retest correlation within this sample size / loading condition
+    estimand   = ifelse(loadings_all_zero[loading_set], 0.001, mean(test_retest_reliability)),        # mean test-retest correlation within this sample size / loading condition; clamped to 0.001 when loadings are all zero
     mean_est   = mean(est)
   ) %>%
   ungroup() %>%
@@ -204,18 +220,18 @@ results_table_long %>%
     pop_coefh_sd  = sd(pop_coefh, na.rm = TRUE),               # sanity check (should be 0)
     n             = n(),
     n_clusters    = n_distinct(rowid),                         # t1 and t2 rows from the same replicate are not independent
-
+  
+    min_est       = min(est),
+    max_est       = max(est),
+    
     # Mean Estimate
     mean        = mean(est),
     mean_se     = cluster_se_mean(est, rowid),                 # cluster-robust (CR2), clustered by replicate
     mean_lb     = mean - qnorm(0.975)*mean_se,
     mean_ub     = mean + qnorm(0.975)*mean_se,
 
-    # Empirical Standard Error
+    # Empirical Standard Error (point estimate only - see header)
     EmpSE       = sd(est),
-    EmpSE_se    = EmpSE/sqrt(2*(n-1)),                         # naive iid formula, as in Studies 2 & 3
-    EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
-    EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
 
     # Bias
     bias        = mean(difference),
@@ -242,7 +258,7 @@ results_table_long %>%
     coverage_lb = coverage - qnorm(0.975)*coverage_se,
     coverage_ub = coverage + qnorm(0.975)*coverage_se,
 
-    # Bias corrected coverage
+    # Bias eliminated coverage
     coverage_be    = length(which(ci_be_correct))/length(ci_be_correct),
     coverage_be_se = cluster_se_mean(as.numeric(ci_be_correct), rowid),   # cluster-robust (CR2), clustered by replicate
     coverage_be_lb = coverage_be - qnorm(0.975)*coverage_be_se,
@@ -255,22 +271,32 @@ results_table_long %>%
     perc_diag_ebfmi_binary       = sum(diag_ebfmi_binary)/n
 
   ) %>%
-  ungroup()
+  ungroup() |> 
+  gt() %>%
+  gt::fmt(columns = !c(name, n), fns = ~ gbtoolbox::apa_num(., n_decimal_places = 3)) %>%
+  gtsave(filename = file.path("results_tables","2_study1_overall_performance.html"))
+  
 
 ## Maximal Reliability: population coefficient H estimand ---------------------------
 
 results_table_long %>%
   mutate(
     name       = factor(name, levels = c("rmu","a","h","irth")),
-    estimand   = pop_coefh,
+    estimand   = ifelse(pop_coefh == 0, 0.001, pop_coefh),      # clamped to 0.001 when population coefficient H is zero
     difference = est - estimand,
     ci_correct = (lb <= estimand & ub >= estimand),
     ci_length  = ub - lb,
   ) %>%
+  group_by(name, loading_set, sample_sizes) %>%
+  mutate(
+    mean_est      = mean(est),
+    ci_be_correct = (lb <= mean_est & ub >= mean_est)
+  ) %>%
+  ungroup() %>%
   group_by(name) %>%
   summarise(
 
-    estimand      = mean(pop_coefh),
+    estimand      = mean(ifelse(pop_coefh == 0, 0.001, pop_coefh)),   # clamped to 0.001 when population coefficient H is zero
     pop_coefh     = mean(pop_coefh),                           # population coefficient H
     pop_coefh_sd  = sd(pop_coefh, na.rm = TRUE),               # sanity check (should be 0)
     n             = n(),
@@ -282,11 +308,8 @@ results_table_long %>%
     mean_lb     = mean - qnorm(0.975)*mean_se,
     mean_ub     = mean + qnorm(0.975)*mean_se,
 
-    # Empirical Standard Error
+    # Empirical Standard Error (point estimate only - see header)
     EmpSE       = sd(est),
-    EmpSE_se    = EmpSE/sqrt(2*(n-1)),                         # naive iid formula, as in Studies 2 & 3
-    EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
-    EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
 
     # Bias
     bias        = mean(difference),
@@ -314,19 +337,32 @@ results_table_long %>%
     coverage_lb = coverage - qnorm(0.975)*coverage_se,
     coverage_ub = coverage + qnorm(0.975)*coverage_se,
 
+    # Bias eliminated coverage
+    coverage_be    = length(which(ci_be_correct))/length(ci_be_correct),
+    coverage_be_se = cluster_se_mean(as.numeric(ci_be_correct), rowid),   # cluster-robust (CR2), clustered by replicate
+    coverage_be_lb = coverage_be - qnorm(0.975)*coverage_be_se,
+    coverage_be_ub = coverage_be + qnorm(0.975)*coverage_be_se,
+
     mean_ci_length = mean(ci_length),
   ) %>%
   ungroup() %>%
   select(name, n,
          RMSE, RMSE_lb, RMSE_ub,
          bias, bias_lb, bias_ub,
-         EmpSE, EmpSE_lb, EmpSE_ub,
+         EmpSE,
          coverage, coverage_lb, coverage_ub,
+         coverage_be, coverage_be_lb, coverage_be_ub,
          mean_ci_length
          ) %>%
   gt() %>%
-  gt::fmt(columns = !c(name, n), fns = ~ gbtoolbox::apa_num(., n_decimal_places = 3)) |>
-  gtsave(filename = file.path("results_tables","2_study1_performance_comparison.html"))
+  gt::fmt(columns = !c(name, n), fns = ~ gbtoolbox::apa_num(., n_decimal_places = 3)) %>%
+  cols_label(
+    coverage_be    ~ "Cov. (BE)",
+    coverage_be_lb ~ "LB",
+    coverage_be_ub ~ "UB"
+  ) %>%
+  tab_spanner(label = "Bias-Eliminated Coverage 95% CI", columns = c(coverage_be, coverage_be_lb, coverage_be_ub)) %>%
+  gtsave(filename = file.path("results_tables","2_study1_overall_performance_COEFH.html"))
 
 ## Performance by Condition (loadings x sample size x estimator) --------------------
 # Currently not setting different estimands for different estimators.
@@ -338,7 +374,7 @@ results_table_long %>%
   ) %>%
   group_by( loading_set, sample_sizes, name) %>%
   mutate(
-    estimand = mean(test_retest_reliability)            # mean test-retest correlation within this sample size / loading condition
+    estimand = ifelse(loadings_all_zero[loading_set], 0.001, mean(test_retest_reliability))            # mean test-retest correlation within this sample size / loading condition; clamped to 0.001 when loadings are all zero
         ) %>%
   mutate(
     difference = est - estimand,
@@ -347,7 +383,7 @@ results_table_long %>%
   ) %>%
   summarise(
 
-    estimand      = mean(test_retest_reliability),
+    estimand      = mean(estimand),
     pop_coefh     = mean(pop_coefh),                           # population coefficient H
     pop_coefh_sd  = sd(pop_coefh, na.rm = TRUE),               # sanity check (should be 0)
     n             = n(),
@@ -359,11 +395,8 @@ results_table_long %>%
     mean_lb     = mean - qnorm(0.975)*mean_se,
     mean_ub     = mean + qnorm(0.975)*mean_se,
 
-    # Empirical Standard Error
+    # Empirical Standard Error (point estimate only - see header)
     EmpSE       = sd(est),
-    EmpSE_se    = EmpSE/sqrt(2*(n-1)),                         # naive iid formula, as in Studies 2 & 3
-    EmpSE_lb    = EmpSE - qnorm(0.975)*EmpSE_se,
-    EmpSE_ub    = EmpSE + qnorm(0.975)*EmpSE_se,
 
     # Bias
     bias        = mean(difference),
@@ -441,9 +474,7 @@ results_table_cleaned %>%
     bias           ~ "bias",
     mean_ci_length ~ "Mean Length",
 
-    EmpSE    ~ "",
-    EmpSE_lb ~ "LB",
-    EmpSE_ub ~ "UB",
+    EmpSE    ~ "EmpSE",
     bias     ~ "",
     bias_lb  ~ "LB",
     bias_ub  ~ "UB",
@@ -458,7 +489,6 @@ results_table_cleaned %>%
   )  %>%
 
   tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
-  tab_spanner(label = "EmpSE 95% CI", columns = c(EmpSE, EmpSE_lb, EmpSE_ub)) %>%
   tab_spanner(label = "RMSE 95% CI", columns = c(RMSE, RMSE_lb, RMSE_ub)) %>%
   tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
   tab_spanner(label = "Simulation Parameters", columns = c(estimand, pop_coefh, loadings_list_pretty,sample_sizes, n)) %>%
@@ -500,6 +530,51 @@ results_table_cleaned %>%
   ) %>%
   opt_horizontal_padding(scale = 1) %>%
   gtsave(filename = file.path("results_tables","2_study1_performance_comparison_differentestimators.html"))
+
+## Min/Max Estimates by Condition ----------------------------------------------
+# Simple summary (no SEs): min and max estimate for each of the four estimators
+# within each condition (loadings x sample size), alongside the estimand and
+# mean estimate.
+
+results_table_long %>%
+  mutate(
+    name = factor(name, levels = c("rmu","a","h","irth"))
+  ) %>%
+  group_by(loading_set, sample_sizes, name) %>%
+  summarise(
+    estimand = ifelse(loadings_all_zero[loading_set[1]], 0.001, mean(test_retest_reliability)),   # clamped to 0.001 when loadings are all zero
+    mean_est = mean(est),
+    min_est  = min(est),
+    max_est  = max(est),
+    .groups  = "drop"
+  ) %>%
+  mutate(
+    loadings_list_pretty = loadings_list_pretty[loading_set],
+    name = as.character(name),
+    name = case_when(
+      name == "rmu"  ~ "RMU",
+      name == "h"    ~ "H (FA)",
+      name == "a"    ~ "Alpha",
+      name == "irth" ~ "H (IRT)"
+    )
+  ) %>%
+  select(name, loadings_list_pretty, sample_sizes, estimand, mean_est, min_est, max_est) %>%
+  arrange(loadings_list_pretty, sample_sizes, name) %>%
+  gt() %>%
+  fmt(
+    columns = c(estimand, mean_est, min_est, max_est),
+    fns = ~ gbtoolbox::apa_num(., n_decimal_places = 3)
+  ) %>%
+  cols_label(
+    name ~ "Est",
+    loadings_list_pretty ~ "Loadings",
+    sample_sizes ~ "{{n_obs}}",
+    estimand ~ "Estimand",
+    mean_est ~ "Mean Estimate",
+    min_est ~ "Min",
+    max_est ~ "Max"
+  ) %>%
+  gtsave(filename = file.path("results_tables","2_study1_min_max_estimates.html"))
 
 # Does the Estimand Vary with Simulation Conditions? ---------------------------------
 
@@ -743,7 +818,7 @@ results_table_stacked %>%
   group_by(sample_sizes,loading_list_pretty2) %>%
   mutate(
     x = 1:n(),
-    estimand = mean(test_retest_reliability),           # mean test-retest correlation within this sample size / loading condition
+    estimand = ifelse(loadings_all_zero[loading_set], 0.001, mean(test_retest_reliability)),           # mean test-retest correlation within this sample size / loading condition; clamped to 0.001 when loadings are all zero
     ci_correct = (rmu_lb <= estimand & rmu_ub >= estimand),
   ) %>%
   ungroup() %>%
@@ -753,3 +828,41 @@ results_table_stacked %>%
   geom_hline(aes(yintercept = estimand), col = "red") +
   facet_wrap(~ loading_list_pretty2 + sample_sizes,
              scales = "free", ncol = 3)
+
+## Credible interval plot (IRT H) --------------------------------------------------
+# Mirrors the RMU credible interval plot above, one panel per simulation
+# condition (loadings x sample size). Saved as a single large PNG since it
+# has too many facets to read comfortably at default plot dimensions.
+
+plot_ci_irth = results_table_stacked %>%
+  arrange(irth_est) %>%
+  group_by(sample_sizes, loading_list_pretty2) %>%
+  mutate(
+    x = 1:n(),
+    estimand = ifelse(loadings_all_zero[loading_set], 0.001, mean(test_retest_reliability)),           # mean test-retest correlation within this sample size / loading condition; clamped to 0.001 when loadings are all zero
+    ci_correct = (irth_lb <= estimand & irth_ub >= estimand),
+  ) %>%
+  ungroup() %>%
+  ggplot(aes(ymin = irth_lb, ymax = irth_ub,
+             x = factor(x))) +
+  geom_errorbar(aes(col = ci_correct)) +
+  geom_hline(aes(yintercept = estimand), col = "red") +
+  facet_wrap(~ loading_list_pretty2 + sample_sizes,
+             scales = "free", ncol = 3) +
+  labs(x = NULL, y = "H (IRT) reliability estimate", col = "CI contains\nestimand",
+       title = "H (IRT): 95% credible intervals per simulated condition") +
+  theme_bw() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+plot_ci_irth
+
+ggsave(file.path("plots", "2_study1_ci_plot_irth.png"), plot = plot_ci_irth, width = 9, height = 16, limitsize = FALSE)
+
+
+# results_table_stacked |> 
+#   filter(loading_set==1) |>
+#   # pull(irth_lb) |> 
+#   # hist(breaks = 1000)
+#   summarise(
+#     min_lb = min(irth_lb)
+#   ) >0
