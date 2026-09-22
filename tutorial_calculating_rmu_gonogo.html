@@ -2421,6 +2421,19 @@ window.Quarto = {
 
 <section id="introduction" class="level1">
 <h1>Introduction</h1>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>This tutorial can be run and tested inside the docker image <code>bignardig/tidyverse461:v5</code>, which has all the required R packages pre-installed.</p>
+</div>
+</div>
 <p>This is a brief walk-through of how to calculate reliability using the approach (relative measurement uncertainty; RMU) described in our <a href="https://osf.io/preprints/psyarxiv/h54k8_v1">pre-print</a>.</p>
 <p>In this example, we will calculate RMU reliability for the <code>d&#39;</code> parameter estimated from a go/no-go task. We will also compare our results to other methods, including test-retest, split-half and empirical reliability.</p>
 <p>For a more detailed tutorial and background on signal detection theory models, I’d recommend the first few chapters of <a href="https://www.routledge.com/Detection-Theory-A-Users-Guide/Hautus-Macmillan-Creelman/p/book/9781138320857">Detection Theory: A User’s Guide</a> and <a href="https://mvuorre.github.io/posts/2017-10-09-bayesian-estimation-of-signal-detection-theory-models/">Matti Vourre’s Excellent Blog</a>, which will explain how these models work in more detail.</p>
@@ -2436,39 +2449,40 @@ window.Quarto = {
 <span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidybayes)</span>
 <span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(brms)</span>
 <span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gt)</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>path_to_data <span class="ot">=</span> <span class="fu">file.path</span>(<span class="st">&quot;data&quot;</span>,<span class="st">&quot;osf_hedge_cwzds&quot;</span>)</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>data_files   <span class="ot">=</span> <span class="fu">list.files</span>(<span class="fu">file.path</span>(<span class="st">&quot;data&quot;</span>,<span class="st">&quot;osf_hedge_cwzds&quot;</span>), <span class="at">all.files =</span> <span class="cn">TRUE</span>, <span class="at">recursive =</span> <span class="cn">TRUE</span>, <span class="at">pattern =</span> <span class="st">&quot;.csv$&quot;</span>, <span class="at">full.names =</span> <span class="cn">TRUE</span> )</span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>data_list    <span class="ot">=</span> <span class="fu">lapply</span>(data_files, <span class="cf">function</span>(x) </span>
-<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">read.csv</span>(</span>
-<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">file =</span> x, </span>
-<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">header =</span> <span class="cn">FALSE</span>,</span>
-<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">col.names =</span> <span class="fu">c</span>(<span class="st">&quot;block&quot;</span>,<span class="st">&quot;trial&quot;</span>,<span class="st">&quot;stimulus&quot;</span>,<span class="st">&quot;condition&quot;</span>,<span class="st">&quot;correct&quot;</span>,<span class="st">&quot;rt&quot;</span>)</span>
-<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    )</span>
-<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a>study_numbers       <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(<span class="fu">sub</span>(<span class="st">&quot;.*Study(</span><span class="sc">\\</span><span class="st">d+)_P(</span><span class="sc">\\</span><span class="st">d+)gng(</span><span class="sc">\\</span><span class="st">d+)</span><span class="sc">\\</span><span class="st">.csv&quot;</span>, <span class="st">&quot;</span><span class="sc">\\</span><span class="st">1&quot;</span>, data_files))</span>
-<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>participant_numbers <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(<span class="fu">sub</span>(<span class="st">&quot;.*Study(</span><span class="sc">\\</span><span class="st">d+)_P(</span><span class="sc">\\</span><span class="st">d+)gng(</span><span class="sc">\\</span><span class="st">d+)</span><span class="sc">\\</span><span class="st">.csv&quot;</span>, <span class="st">&quot;</span><span class="sc">\\</span><span class="st">2&quot;</span>, data_files))</span>
-<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>session_numbers     <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(<span class="fu">sub</span>(<span class="st">&quot;.*Study(</span><span class="sc">\\</span><span class="st">d+)_P(</span><span class="sc">\\</span><span class="st">d+)gng(</span><span class="sc">\\</span><span class="st">d+)</span><span class="sc">\\</span><span class="st">.csv&quot;</span>, <span class="st">&quot;</span><span class="sc">\\</span><span class="st">3&quot;</span>, data_files))</span>
-<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="fu">seq_along</span>(data_files)){</span>
-<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a>  data_list[[i]]<span class="sc">$</span>study   <span class="ot">=</span> study_numbers[i]</span>
-<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>  data_list[[i]]<span class="sc">$</span>session <span class="ot">=</span> session_numbers[i]</span>
-<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (study_numbers[i] <span class="sc">==</span> <span class="dv">2</span>) {participant_numbers[i] <span class="ot">=</span> participant_numbers[i] <span class="sc">+</span> <span class="dv">1000</span>}</span>
-<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>  data_list[[i]]<span class="sc">$</span>pps     <span class="ot">=</span> participant_numbers[i]</span>
-<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a>data_long <span class="ot">=</span> <span class="fu">do.call</span>(<span class="st">&quot;bind_rows&quot;</span>, data_list)</span>
-<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a>data_long <span class="ot">=</span> data_long <span class="sc">|&gt;</span></span>
-<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(pps, session)</span>
-<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a>data_long <span class="sc">|&gt;</span></span>
-<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>  <span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">15</span>) <span class="sc">|&gt;</span></span>
-<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
-<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">&quot;This is what our data looks like&quot;</span></span>
-<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>  )</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gbtoolbox)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>path_to_data <span class="ot">=</span> <span class="fu">file.path</span>(<span class="st">&quot;data&quot;</span>,<span class="st">&quot;osf_hedge_cwzds&quot;</span>)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>data_files   <span class="ot">=</span> <span class="fu">list.files</span>(<span class="fu">file.path</span>(<span class="st">&quot;data&quot;</span>,<span class="st">&quot;osf_hedge_cwzds&quot;</span>), <span class="at">all.files =</span> <span class="cn">TRUE</span>, <span class="at">recursive =</span> <span class="cn">TRUE</span>, <span class="at">pattern =</span> <span class="st">&quot;.csv$&quot;</span>, <span class="at">full.names =</span> <span class="cn">TRUE</span> )</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>data_list    <span class="ot">=</span> <span class="fu">lapply</span>(data_files, <span class="cf">function</span>(x) </span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">read.csv</span>(</span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">file =</span> x, </span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>    <span class="at">header =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>    <span class="at">col.names =</span> <span class="fu">c</span>(<span class="st">&quot;block&quot;</span>,<span class="st">&quot;trial&quot;</span>,<span class="st">&quot;stimulus&quot;</span>,<span class="st">&quot;condition&quot;</span>,<span class="st">&quot;correct&quot;</span>,<span class="st">&quot;rt&quot;</span>)</span>
+<span id="cb1-17"><a href="#cb1-17" aria-hidden="true" tabindex="-1"></a>    )</span>
+<span id="cb1-18"><a href="#cb1-18" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb1-19"><a href="#cb1-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-20"><a href="#cb1-20" aria-hidden="true" tabindex="-1"></a>study_numbers       <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(<span class="fu">sub</span>(<span class="st">&quot;.*Study(</span><span class="sc">\\</span><span class="st">d+)_P(</span><span class="sc">\\</span><span class="st">d+)gng(</span><span class="sc">\\</span><span class="st">d+)</span><span class="sc">\\</span><span class="st">.csv&quot;</span>, <span class="st">&quot;</span><span class="sc">\\</span><span class="st">1&quot;</span>, data_files))</span>
+<span id="cb1-21"><a href="#cb1-21" aria-hidden="true" tabindex="-1"></a>participant_numbers <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(<span class="fu">sub</span>(<span class="st">&quot;.*Study(</span><span class="sc">\\</span><span class="st">d+)_P(</span><span class="sc">\\</span><span class="st">d+)gng(</span><span class="sc">\\</span><span class="st">d+)</span><span class="sc">\\</span><span class="st">.csv&quot;</span>, <span class="st">&quot;</span><span class="sc">\\</span><span class="st">2&quot;</span>, data_files))</span>
+<span id="cb1-22"><a href="#cb1-22" aria-hidden="true" tabindex="-1"></a>session_numbers     <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(<span class="fu">sub</span>(<span class="st">&quot;.*Study(</span><span class="sc">\\</span><span class="st">d+)_P(</span><span class="sc">\\</span><span class="st">d+)gng(</span><span class="sc">\\</span><span class="st">d+)</span><span class="sc">\\</span><span class="st">.csv&quot;</span>, <span class="st">&quot;</span><span class="sc">\\</span><span class="st">3&quot;</span>, data_files))</span>
+<span id="cb1-23"><a href="#cb1-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-24"><a href="#cb1-24" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="fu">seq_along</span>(data_files)){</span>
+<span id="cb1-25"><a href="#cb1-25" aria-hidden="true" tabindex="-1"></a>  data_list[[i]]<span class="sc">$</span>study   <span class="ot">=</span> study_numbers[i]</span>
+<span id="cb1-26"><a href="#cb1-26" aria-hidden="true" tabindex="-1"></a>  data_list[[i]]<span class="sc">$</span>session <span class="ot">=</span> session_numbers[i]</span>
+<span id="cb1-27"><a href="#cb1-27" aria-hidden="true" tabindex="-1"></a>  <span class="cf">if</span> (study_numbers[i] <span class="sc">==</span> <span class="dv">2</span>) {participant_numbers[i] <span class="ot">=</span> participant_numbers[i] <span class="sc">+</span> <span class="dv">1000</span>}</span>
+<span id="cb1-28"><a href="#cb1-28" aria-hidden="true" tabindex="-1"></a>  data_list[[i]]<span class="sc">$</span>pps     <span class="ot">=</span> participant_numbers[i]</span>
+<span id="cb1-29"><a href="#cb1-29" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb1-30"><a href="#cb1-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-31"><a href="#cb1-31" aria-hidden="true" tabindex="-1"></a>data_long <span class="ot">=</span> <span class="fu">do.call</span>(<span class="st">&quot;bind_rows&quot;</span>, data_list)</span>
+<span id="cb1-32"><a href="#cb1-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-33"><a href="#cb1-33" aria-hidden="true" tabindex="-1"></a>data_long <span class="ot">=</span> data_long <span class="sc">|&gt;</span></span>
+<span id="cb1-34"><a href="#cb1-34" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(pps, session)</span>
+<span id="cb1-35"><a href="#cb1-35" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-36"><a href="#cb1-36" aria-hidden="true" tabindex="-1"></a>data_long <span class="sc">|&gt;</span></span>
+<span id="cb1-37"><a href="#cb1-37" aria-hidden="true" tabindex="-1"></a>  <span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">15</span>) <span class="sc">|&gt;</span></span>
+<span id="cb1-38"><a href="#cb1-38" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(</span>
+<span id="cb1-39"><a href="#cb1-39" aria-hidden="true" tabindex="-1"></a>    <span class="at">caption =</span> <span class="st">&quot;This is what our data looks like&quot;</span></span>
+<span id="cb1-40"><a href="#cb1-40" aria-hidden="true" tabindex="-1"></a>  )</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
 <caption>This is what our data looks like</caption>
@@ -3464,7 +3478,7 @@ r_pps[11,condition_contrast] 4.699287 3.833865 5.000865 5.111063</code></pre>
 <section id="practice" class="level3">
 <h3 class="anchored" data-anchor-id="practice">Practice</h3>
 <p>The code to calculate RMU using the posterior draw matrix is relatively simple.</p>
-<p>You can either install my R package of miscellaneous R functions <code>gbtoolbox</code> available on github, or you can just load the reliability function directly from github. Both methods are outlined below:</p>
+<p><code>library(gbtoolbox)</code> is already loaded above (see <a href="#load-data">Load Data</a>), but if you don’t have it installed, you can either install my R package of miscellaneous R functions <code>gbtoolbox</code> available on github, or you can just load the reliability function directly from github (not run here, since <code>gbtoolbox</code> is already installed in the docker image used to build this tutorial). Both methods are outlined below:</p>
 <p>Install R package from github:</p>
 <div class="cell">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a>devtools<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;giac01/gbtoolbox&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>

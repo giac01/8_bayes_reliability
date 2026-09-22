@@ -19,9 +19,13 @@ categories:
 
 # Introduction
 
+::: {.callout-note}
+This tutorial can be run and tested inside the docker image `bignardig/tidyverse461:v5`, which has all the required R packages pre-installed.
+:::
+
 This tutorial demonstrates how to use Relative Measurement Uncertainty (RMU) to estimate mean score reliability. See our [pre-print](https://osf.io/h54k8) for more information on RMU.
 
-This brief tutorial assumes your relatively familiar with multilevel Bayesian modelling and logistic regression. 
+This brief tutorial assumes your relatively familiar with multilevel Bayesian modelling and logistic regression.
 
 # Set Up
 
@@ -39,6 +43,7 @@ library(brms)
 library(cmdstanr)
 library(psych)
 library(tidyverse)
+library(gbtoolbox)
 
 rm(list=ls())
 set.seed(1)
@@ -168,7 +173,7 @@ $$
 
 To calculate RMU, extract the posterior draws for each mouse's random intercept parameter, and plug the matrix of draws into my reliability function. 
 
-You can either install my R package `gbtoolbox` from github, or you can just load the reliability function directly from github. Both methods are outlined below:
+`library(gbtoolbox)` is already loaded above (see [Set Up]), but if you don't have it installed, you can either install my R package `gbtoolbox` from github, or you can just load the reliability function directly from github (not run here, since `gbtoolbox` is already installed in the docker image used to build this tutorial). Both methods are outlined below:
 
 Install R package from github:
 

@@ -20,6 +20,10 @@ categories:
 
 # Introduction
 
+::: {.callout-note}
+This tutorial can be run and tested inside the docker image `bignardig/tidyverse461:v5`, which has all the required R packages pre-installed (note: `cmdstan` still needs to be installed separately -- see [Setup] below).
+:::
+
 This is a brief walk-through of how to calculate reliability using relative measurement uncertainty (RMU) described in our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1), this time applied to a **reinforcement learning task** rather than a  signal-detection model (see the [go/no-go tutorial](tutorial_calculating_rmu_gonogo.html) for that example).
 
 Reinforcement learning models can be fit hierarchically in a Bayesian framework, and [`hBayesDM`](https://github.com/CCS-Lab/hBayesDM) is a popular R package that ships ready-made Stan models for many common tasks, so you don't have to write your own Stan code. This tutorial shows:
@@ -48,10 +52,30 @@ set.seed(1)
 library(tidyverse)
 library(hBayesDM)
 library(cmdstanr)
-library(gbtoolbox)  # devtools::install_github("giac01/gbtoolbox")
+library(gbtoolbox)
 library(gt)
 
 data_dir = file.path("data", "pike_2026")
+```
+
+This tutorial uses `reliability()`, which lives in my R package of miscellaneous R functions, [`gbtoolbox`](https://github.com/giac01/gbtoolbox). You can either install the package from github, or just source the `reliability()` function directly -- both options are shown below (not run here, since `gbtoolbox` is already installed in the docker image used to build this tutorial):
+
+Install the R package from github:
+
+```{r}
+#| eval: false
+
+devtools::install_github("giac01/gbtoolbox")
+
+```
+
+Or, just load the R function directly (make sure you also have `ggdist` installed):
+
+```{r}
+#| eval: false
+
+source("https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/reliability.R")
+
 ```
 
 `hBayesDM`'s Stan models are fit via `cmdstanr`, which needs a working cmdstan installation. If `cmdstanr` doesn't already know where cmdstan is (e.g. from a previous `set_cmdstan_path()` call, saved in `cmdstanr`'s config file), we point it at one below -- either via a `CMDSTAN` environment variable, or by editing the fallback path directly (see the [cmdstanr installation guide](https://mc-stan.org/cmdstanr/articles/cmdstanr.html#installing-cmdstan) if you don't have cmdstan installed):
@@ -153,7 +177,7 @@ bandit_df |>
 
 We now fit `bandit4arm_4par()` to all 115 participants at once -- it's a *hierarchical* model, so every participant's `Arew`/`Apun`/`R`/`P` estimate borrows statistical information from the group.
 
-We use `niter = 2000` (`nwarmup = 1000` of which are warmup, leaving 1,000 post-warmup draws per chain), `nchain = 4`, `ncore = 4`, and `adapt_delta = 0.95`. This is a hard to sample model -- expect this chunk to take several hours. In  `applied_example_pike/` we used even more conservative settings (`niter = 8000`, `nwarmup = 3000`, `adapt_delta = 0.975`) and inspect the diagnostics in more detail. 
+We use `niter = 3000` (`nwarmup = 1000` of which are warmup, leaving 2,000 post-warmup draws per chain), `nchain = 4`, `ncore = 4`, and `adapt_delta = 0.95`. This is a hard to sample model -- expect this chunk to take several hours. In  `applied_example_pike/` we used even more conservative settings (`niter = 8000`, `nwarmup = 3000`, `adapt_delta = 0.975`) and inspect the diagnostics in more detail. 
 
 ```{r}
 #| message: false
@@ -162,7 +186,7 @@ We use `niter = 2000` (`nwarmup = 1000` of which are warmup, leaving 1,000 post-
 
 fit_bandit = bandit4arm_4par(
   data        = bandit_df,
-  niter       = 2000,
+  niter       = 3000,
   nwarmup     = 1000,
   nchain      = 4,
   ncore       = 4,
@@ -411,6 +435,54 @@ rmu_scale_comparison |>
 ```
 
 Here they line up closely, but that won't always be true -- when RMU differs noticeably by scale, it's a sign that "how reliable is this parameter" doesn't have one scale-free answer, and the scale you report reliability on should be the one you'll actually use in downstream analyses. For a full write-up of this same check on the much larger full T1 sample (N = 547), including per-band posterior probability tables, see [the applied example](applied_example_pike/02_02_pike_2026_bandit.html#does-rescaling-parameters-change-reliability-estimates).
+
+# Empirical reliability
+
+Next we will compare RMU to the empirical reliability method (Du Toit, 2003), which is another approach to calculating reliability for Bayesian or maximum-likelihood models. In our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1), we show that point-estimates from RMU and empirical reliability when estimated from the same posterior draws should be identical in large samples. 
+
+Take a single parameter as an example, say the reward learning rate `Arew`. For each participant $p$, the fitted model gives us a point estimate, $\hat\theta_p$ (`Arew`'s posterior mean for that participant), and a measure of how uncertain that estimate is, $\hat V_p$ (`Arew`'s posterior *variance* for that participant -- i.e. the squared posterior SD of their `Arew` draws). Across all $N = 115$ participants, this gives us two vectors, $\hat\theta = \{\hat\theta_1, \hat\theta_2, \dots, \hat\theta_N\}$ and $\hat V = \{\hat V_1, \hat V_2, \dots, \hat V_N\}$ -- exactly the `mean` and (squared) `sd` columns that `fit_bandit$fit$summary()` reports for each participant.
+
+Empirical reliability is essentially the classical reliability equation, $\sigma^2_{\text{truescores}} / (\sigma^2_{\text{truescores}} + \sigma^2_{\text{error}})$ (Revelle & Condon, 2018), built from these sample quantities: the variance of the point estimates across participants stands in for true-score variance, and the average of each participant's own posterior variance stands in for error variance:
+
+$$
+\text{Empirical Reliability} = \frac{\widehat{\text{Var}}(\hat\theta)}{\widehat{\text{Var}}(\hat\theta) + \sum_{p=1}^{N} \hat V_p / N}
+$$
+
+## Calculating empirical reliability
+
+Unlike RMU, empirical reliability doesn't need the full matrix of posterior draws -- just each participant's posterior mean ($\hat\theta_p$ above) and posterior variance ($\hat V_p$ above), which `cmdstanr`'s `summary()` gives us directly:
+
+```{r}
+empirical_reliability = function(fit, par) {
+  s         = fit$fit$summary(variables = par)  # one row per participant: posterior mean & sd
+  theta_hat = s$mean  # each participant's point estimate
+  V_hat     = s$sd^2  # each participant's posterior variance (sampling/measurement error)
+  var(theta_hat) / (var(theta_hat) + mean(V_hat))
+}
+
+rel_empirical = map_dfr(subj_pars, function(par) {
+  tibble(parameter = par, empirical_reliability = empirical_reliability(fit_bandit, par))
+})
+
+rel_empirical |>
+  gt() |>
+  fmt_number(columns = empirical_reliability, decimals = 3)
+```
+
+## Comparing RMU and empirical reliability
+
+```{r}
+rel_comparison = rel_manual |>
+  select(parameter, rmu) |>
+  left_join(rel_empirical, by = "parameter") |>
+  mutate(difference = rmu - empirical_reliability)
+
+rel_comparison |>
+  gt() |>
+  fmt_number(columns = c(rmu, empirical_reliability, difference), decimals = 3)
+```
+
+The two methods agree closely here. But note the asymmetry: RMU comes with the `lower`/`upper` HDCI columns we calculated [above](#manually-pulling-a-matrix-of-posterior-draws), while empirical reliability gives us only a single point estimate -- so when the two methods *do* disagree, there's no way to tell from empirical reliability alone whether that reflects genuine disagreement or just falls within RMU's own uncertainty.
 
 # Wrap-up
 

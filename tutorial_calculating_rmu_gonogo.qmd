@@ -19,7 +19,11 @@ categories:
 
 # Introduction
 
-This is a brief walk-through of how to calculate reliability using the approach (relative measurement uncertainty; RMU) described in our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1). 
+::: {.callout-note}
+This tutorial can be run and tested inside the docker image `bignardig/tidyverse461:v5`, which has all the required R packages pre-installed.
+:::
+
+This is a brief walk-through of how to calculate reliability using the approach (relative measurement uncertainty; RMU) described in our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1).
 
 In this example, we will calculate RMU reliability for the `d'` parameter estimated from a go/no-go task. We will also compare our results to other methods, including test-retest, split-half and empirical reliability. 
 
@@ -40,6 +44,7 @@ library(tidyverse)
 library(tidybayes)
 library(brms)
 library(gt)
+library(gbtoolbox)
 
 path_to_data = file.path("data","osf_hedge_cwzds")
 data_files   = list.files(file.path("data","osf_hedge_cwzds"), all.files = TRUE, recursive = TRUE, pattern = ".csv$", full.names = TRUE )
@@ -331,7 +336,7 @@ RMU reliability will increase when subjects' posterior means have greater varian
 
 The code to calculate RMU using the posterior draw matrix is relatively simple. 
 
-You can either install my R package of miscellaneous R functions `gbtoolbox` available on github, or you can just load the reliability function directly from github. Both methods are outlined below:
+`library(gbtoolbox)` is already loaded above (see [Load Data]), but if you don't have it installed, you can either install my R package of miscellaneous R functions `gbtoolbox` available on github, or you can just load the reliability function directly from github (not run here, since `gbtoolbox` is already installed in the docker image used to build this tutorial). Both methods are outlined below:
 
 Install R package from github:
 
