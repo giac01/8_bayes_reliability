@@ -45,6 +45,12 @@ loadings_list = list(
 )
 
 loadings_list_paste = lapply(loadings_list, function(x) paste0(x, collapse = "_")) %>% unlist()
+
+# All-zero loadings condition: no true common factor, so the sampled
+# test-retest correlation is pure noise around 0. Indexed by loading_set,
+# used below to clamp the estimand to 0.001 in that condition (matching
+# 2_study1_2_analysis.R) instead of a noisy sample mean.
+loadings_all_zero = sapply(loadings_list, function(x) all(x == 0))
 ```
 
 ## Read raw simulation results
@@ -183,7 +189,7 @@ results_table_long %>%
   mutate(
     name       = factor(name, levels = c("rmu","a","h","irth"),
                         labels = c("RMU", "coefficient alpha", "factor analysis H", "IRT H")),
-    estimand   = mean(test_retest_reliability)        # mean test-retest correlation within this sample size / loading condition
+    estimand   = ifelse(loadings_all_zero[loading_set], 0.001, mean(test_retest_reliability))        # mean test-retest correlation within this sample size / loading condition; clamped to 0.001 when loadings are all zero (as in 2_study1_2_analysis.R)
   ) %>%
   ungroup() %>%
   group_by(name) %>%
@@ -237,7 +243,7 @@ results_table_long %>%
   mutate(
     name       = factor(name, levels = c("rmu","a","h","irth"),
                         labels = c("RMU", "coefficient alpha", "factor analysis H", "IRT H")),
-    estimand   = pop_coefh,
+    estimand   = ifelse(pop_coefh == 0, 0.001, pop_coefh),      # clamped to 0.001 when population coefficient H is zero (as in 2_study1_2_analysis.R)
     difference = est - estimand,
     ci_correct = (lb <= estimand & ub >= estimand),
     ci_length  = ub - lb,
