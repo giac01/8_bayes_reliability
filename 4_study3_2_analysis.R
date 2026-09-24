@@ -348,7 +348,7 @@ results_table_cleaned = results_table %>%
     mean_dist_decision_noise     = mean(mean_dist_decision_noise)
   )  %>%
   ungroup() %>%
-  select(-estimand_sd, -coverage_se, -coverage_be_se) %>%
+  select(-estimand_sd, -coverage_se, -coverage_be_se, -coverage_be, -coverage_be_lb, -coverage_be_ub) %>%
   select(estimand, sample_sizes, learning_rate_sd, everything())
 
 table_performance_comparison = results_table_cleaned %>%
@@ -387,9 +387,6 @@ table_performance_comparison = results_table_cleaned %>%
     coverage ~ "Cov.",
     coverage_lb  ~ "LB",
     coverage_ub  ~ "UB",
-    coverage_be    ~ "Cov. (BE)",
-    coverage_be_lb ~ "LB",
-    coverage_be_ub ~ "UB",
     mean_ci_length ~ md("Mean<br>Length"),
     mean_ts_coverage ~ md("True<br>Score<br>Coverage"),
     learning_rate_sd ~ "{{:sigma:_learnrate}}",
@@ -399,16 +396,14 @@ table_performance_comparison = results_table_cleaned %>%
   tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
   tab_spanner(label = "RMSE 95% CI", columns = c(RMSE, RMSE_lb, RMSE_ub)) %>%
   tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
-  tab_spanner(label = "Bias-Eliminated Coverage 95% CI", columns = c(coverage_be, coverage_be_lb, coverage_be_ub)) %>%
   tab_spanner(label = "Simulation Parameters", columns = c(estimand, learning_rate_sd, n_trials, sample_sizes, n)) %>%
   tab_spanner(label = "Estimator Performance", columns = c(RMSE, RMSE_lb, RMSE_ub, bias, bias_lb, bias_ub, EmpSE)) %>%
-  tab_spanner(label = "Credible Interval Performance", columns = c(coverage, coverage_lb, coverage_ub, coverage_be, coverage_be_lb, coverage_be_ub, mean_ci_length)) %>%
+  tab_spanner(label = "Credible Interval Performance", columns = c(coverage, coverage_lb, coverage_ub, mean_ci_length)) %>%
   tab_footnote(
     footnote = html("<b>n<sub>sim</sub></b> = number of simulations completed for this set of simulation parameters (t1 and t2 estimates counted separately).
                 <b>n<sub>obs</sub></b> = number of subjects per simulation.
                 <b>RMSE</b> = Root Mean Squared Error.
                 <b>Coverage</b> = proportion of times the 95% credible intervals include the estimand, which should be around 95%.
-                <b>Cov. (BE)</b> = bias-eliminated coverage, i.e. coverage of the 95% credible intervals around the mean estimate (rather than the estimand), which isolates interval calibration from estimator bias.
                 <b>estimand</b> = test-retest reliability, i.e. the mean correlation between Bayesian learning-rate point-estimates at t1 and t2, pooled across all sample sizes for a given combination of trial number and learning-rate SD.
                 <b>Mean Length</b> = Mean length of credible interval.
                 <b>σ<sub>learnrate</sub></b> = standard deviation of population true learning rates across subjects.

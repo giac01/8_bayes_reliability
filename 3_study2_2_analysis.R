@@ -326,7 +326,7 @@ results_table_cleaned %>%
     name == "sh" ~ "SH",
     TRUE ~ NA_character_  # Catches any other values
   )) %>%
-  select(-estimand_sd, -coverage_se, -coverage_be_se) %>%
+  select(-estimand_sd, -coverage_se, -coverage_be_se, -coverage_be, -coverage_be_lb, -coverage_be_ub) %>%
   select(name, estimand, everything()) %>%
   arrange(sens_sigma, n_items, sample_sizes, name) %>%
   gt() %>%
@@ -358,9 +358,6 @@ results_table_cleaned %>%
     coverage ~ "Cov.",
     coverage_lb  ~ "LB",
     coverage_ub  ~ "UB",
-    coverage_be    ~ "Cov. (BE)",
-    coverage_be_lb ~ "LB",
-    coverage_be_ub ~ "UB",
     mean_ci_length ~  md("Mean<br>Length"),
     name         ~ "Est",
     perc_diag_divergences_binary ~ md("% DT"),
@@ -369,7 +366,6 @@ results_table_cleaned %>%
   )  %>%
   tab_spanner(label = "Bias 95% CI", columns = c(bias, bias_lb, bias_ub)) %>%
   tab_spanner(label = "Coverage 95% CI", columns = c(coverage, coverage_lb, coverage_ub)) %>%
-  tab_spanner(label = "Bias-Eliminated Coverage 95% CI", columns = c(coverage_be, coverage_be_lb, coverage_be_ub)) %>%
   tab_spanner(label = "RMSE 95% CI", columns = c(RMSE, RMSE_lb, RMSE_ub)) %>%
   tab_spanner(label = "Simulation Parameters",
               columns = c(name,estimand, sens_sigma, n_items, sample_sizes, n)) %>%
@@ -381,7 +377,6 @@ results_table_cleaned %>%
               <b>n<sub>obs</sub></b> = number of subjects per simulation.
               <b>RMSE</b> = Root Mean Squared Error.
               <b>Coverage</b> = proportion of times the 95% credible intervals include the population reliability, which should be around 95%.
-              <b>Cov. (BE)</b> = bias-eliminated coverage, i.e. coverage of the 95% credible intervals around the mean estimate (rather than the estimand), which isolates interval calibration from estimator bias.
               <b>estimand</b> = test-retest reliability, i.e. the mean correlation between Bayesian sensitivity point-estimates at t1 and t2, calculated separately for each combination of trial number, sensitivity SD, and sample size.
               <b>Mean Length</b> = Mean length of credible or confidence interval.
               <b>σ<sub>d'</sub></b> = standard deviation of population true sensitivity values across subjects.
