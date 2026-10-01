@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite the accompanying preprint."
+title: "Code for: A general method for estimating reliability using Bayesian Measurement Uncertainty"
+type: software
+license: MIT
+repository-code: "https://github.com/giac01/8_bayes_reliability"
+authors:
+  - family-names: Bignardi
+    given-names: Giacomo
+  - family-names: Kievit
+    given-names: Rogier
+  - family-names: Bürkner
+    given-names: Paul-Christian
+preferred-citation:
+  type: article
+  title: "A general method for estimating reliability using Bayesian Measurement Uncertainty"
+  authors:
+    - family-names: Bignardi
+      given-names: Giacomo
+    - family-names: Kievit
+      given-names: Rogier
+    - family-names: Bürkner
+      given-names: Paul-Christian
+  journal: "PsyArXiv"
+  year: 2025
+  doi: "10.31234/osf.io/h54k8_v1"
+  url: "https://osf.io/preprints/psyarxiv/h54k8_v1"

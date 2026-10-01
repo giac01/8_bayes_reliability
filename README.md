@@ -101,6 +101,19 @@ Standalone worked tutorials, not tied to the paper's simulation studies:
 - [`tutorial_rmu_sum_score_reliability.html`](tutorial_rmu_sum_score_reliability.html) (source: `tutorial_rmu_sum_score_reliability.qmd`) — demonstrates RMU for estimating mean/sum score reliability using a simple multilevel simulation (repeated length measurements)
 - [`tutorial_calculating_rmu_bandit.html`](tutorial_calculating_rmu_bandit.html) (source: `tutorial_calculating_rmu_bandit.qmd`) — calculates RMU reliability for a reinforcement-learning (fluctuating bandit) task fit hierarchically with `hBayesDM::bandit4arm_4par()`, both manually from posterior draws and automatically via `reliability()`
 
+PDF versions of each tutorial (`tutorial_*.pdf`) are rendered from the same `.qmd` sources with `quarto render <file>.qmd --to typst` inside `bignardig/tidyverse461:v5`.
+
+## Data sources and licences
+
+The code in this repository is released under the MIT licence (see `LICENSE`). The third-party datasets in `data/` are redistributed unchanged for reproducibility and are **not** covered by the MIT licence. They remain the property of their original authors, and you should cite the original sources if you use them:
+
+- `data/pike_2026/`: data and Stan models from Pike, A. C., … Roiser, J. P. (2026). The recoverability, reliability, and generalizability of reward processing parameters and relation to mental health symptoms. *Psychological Medicine*, 56, e238. [doi:10.1017/S0033291726105340](https://doi.org/10.1017/S0033291726105340). Downloaded from OSF ([data](https://osf.io/kde4b/), [models](https://osf.io/p648q/)) and licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+- `data/osf_hedge_cwzds/`: go/no-go data from Hedge, C., Powell, G., & Sumner, P. (2018). The reliability paradox: Why robust cognitive tasks do not produce reliable individual differences. *Behavior Research Methods*, 50, 1166–1186. [doi:10.3758/s13428-017-0935-1](https://doi.org/10.3758/s13428-017-0935-1). Downloaded from [osf.io/cwzds](https://osf.io/cwzds/). No licence is specified there.
+
+## Citation
+
+If you use this code, please cite the preprint above. Citation metadata is in `CITATION.cff`, and the Zenodo archive metadata is in `.zenodo.json`.
+
 ## Helpful terminal commands
 
 docker run --rm -it --name bandit_fullsample \

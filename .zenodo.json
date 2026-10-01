@@ -1,0 +1,28 @@
+{
+  "title": "Code and tutorials for: A general method for estimating reliability using Bayesian Measurement Uncertainty",
+  "upload_type": "software",
+  "description": "<p>R and Stan code for the simulation studies, applied example and tutorials accompanying the preprint <em>A general method for estimating reliability using Bayesian Measurement Uncertainty</em> (Bignardi, Kievit &amp; Bürkner). Relative measurement uncertainty (RMU) estimates reliability by drawing pairs of samples from each subject's posterior and correlating them. Includes rendered tutorials (HTML and PDF) for go/no-go (signal detection), mean/sum score and reinforcement-learning (bandit) examples. All code runs in the Docker image <code>bignardig/tidyverse461</code> (R 4.6.1); see README.md.</p>",
+  "creators": [
+    {"name": "Bignardi, Giacomo"},
+    {"name": "Kievit, Rogier"},
+    {"name": "Bürkner, Paul-Christian"}
+  ],
+  "license": "MIT",
+  "keywords": [
+    "reliability",
+    "relative measurement uncertainty",
+    "Bayesian",
+    "psychometrics",
+    "computational modelling",
+    "Stan",
+    "brms"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "10.31234/osf.io/h54k8_v1",
+      "relation": "isSupplementTo",
+      "resource_type": "publication-preprint",
+      "scheme": "doi"
+    }
+  ]
+}

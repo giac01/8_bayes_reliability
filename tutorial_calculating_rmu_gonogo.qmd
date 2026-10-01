@@ -574,7 +574,7 @@ data.frame(
 
 ```
 
-# Appendix: Bayesian vs. Simple d' Estimates
+# Appendix: Bayesian vs. Simple d' Estimates {#appendix-a-bayesian-vs-simple-d-estimates}
 
 If we just calculate `d'` using the transformed hit rate and false alarm rate, using the formula shown in @eq-dprime, does this give us estimates that are very different, or less reliable?
 
