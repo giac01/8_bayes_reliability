@@ -2,7 +2,7 @@
 title: "Tutorial: Calculating RMU reliability for a go/no-go task"
 author: "Giacomo Bignardi"
 date: "09/11/2025"
-date-modified: "10/2/2025"
+date-modified: "10/2/2026"
 cache: true
 freeze: true
 format: 
@@ -20,16 +20,77 @@ categories:
 # Introduction
 
 ::: {.callout-note}
-This tutorial can be run and tested inside the docker image `bignardig/tidyverse461:v5`, which has all the required R packages pre-installed.
+This tutorial can be run and tested inside the docker image `bignardig/tidyverse461:v6`, which has all the required R packages pre-installed. The `v6` image differs from the `v5` image used for the paper's analysis scripts only in that it ships the newer version of `gbtoolbox`, in which the `reliability()` function has been renamed `rmu()`. The old name still works (with a deprecation warning), so the analysis code is unaffected.
+
+You don't need docker to follow along, though -- you can also run the code the usual way, in your own R installation. The code in [Installing the required R packages](#installing-the-required-r-packages) will install all the necessary R packages for you.
 :::
 
 This is a brief walk-through of how to calculate reliability using the approach (relative measurement uncertainty; RMU) described in our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1).
 
-In this example, we will calculate RMU reliability for the `d'` parameter estimated from a go/no-go task. We will also compare our results to other methods, including test-retest, split-half and empirical reliability. 
+In this example, we will calculate RMU reliability for the `d'` parameter estimated from a go/no-go task. We will also compare our results to other methods, including test-retest, split-half and empirical reliability.
 
 For a more detailed tutorial and background on signal detection theory models, I'd recommend the first few chapters of [Detection Theory: A User's Guide](https://www.routledge.com/Detection-Theory-A-Users-Guide/Hautus-Macmillan-Creelman/p/book/9781138320857) and [Matti Vourre's Excellent Blog](https://mvuorre.github.io/posts/2017-10-09-bayesian-estimation-of-signal-detection-theory-models/), which will explain how these models work in more detail.
 
-In this tutorial, I'm going to assume that you're familiar with the basics of Bayesian modelling and brms, and focus on the reliability methods. 
+In this tutorial, I'm going to assume that you're familiar with the basics of Bayesian modelling and brms, and focus on the reliability methods.
+
+## Getting the code and data
+
+The source file for this tutorial (`tutorial_calculating_rmu_gonogo.qmd`) and the go/no-go data it uses (in `data/osf_hedge_cwzds/`) are both in the paper's GitHub repository, [giac01/8_bayes_reliability](https://github.com/giac01/8_bayes_reliability). The easiest way to get everything is to clone the repository, which needs [git](https://git-scm.com/downloads) to be installed (the download is around 120 MB, as the repository also contains the paper's simulation code and results):
+
+```bash
+git clone https://github.com/giac01/8_bayes_reliability.git
+cd 8_bayes_reliability
+```
+
+If you'd rather not use git, you can download the same files as a zip archive from the repository page (the green **Code** button, then **Download ZIP**, or [this direct link](https://github.com/giac01/8_bayes_reliability/archive/refs/heads/main.zip)) and unzip it.
+
+The tutorial `.qmd` files sit in the root folder of the repository, and the data paths in the code below are relative to that folder. If you open the `.qmd` file in RStudio and run the chunks or render it, the working directory is set to the repository root for you. If you're instead running the code in a plain R session, set the working directory to the repository root first, e.g. `setwd("~/8_bayes_reliability")`.
+
+If you're using the docker image, start the container from inside the cloned folder, mounting it as the working directory. For example, the following renders this tutorial:
+
+```bash
+docker run --rm -it --user rstudio \
+  -v "$PWD":/home/rstudio/8_bayes_reliability \
+  -w /home/rstudio/8_bayes_reliability \
+  bignardig/tidyverse461:v6 \
+  quarto render tutorial_calculating_rmu_gonogo.qmd
+```
+
+## Installing the required R packages
+
+The code below checks for the R packages this tutorial needs and installs any that are missing. All of them are on CRAN, except for my package of miscellaneous R functions, [`gbtoolbox`](https://github.com/giac01/gbtoolbox), which contains the `rmu()` function used to calculate RMU. `gbtoolbox` is installed from github; if you already have an older version installed, which has `reliability()` but no `rmu()`, it will be updated.
+
+```{r}
+#| results: hide
+
+# Install any missing CRAN packages (does nothing if they are all already installed)
+required_packages = c("tidyverse", "tidybayes", "brms", "gt", "ggdist", "knitr", "remotes")
+missing_packages  = required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+if (length(missing_packages) > 0) install.packages(missing_packages)
+
+# Install (or update) gbtoolbox from github if rmu() isn't available
+if (!requireNamespace("gbtoolbox", quietly = TRUE) || !"rmu" %in% getNamespaceExports("gbtoolbox")) {
+  remotes::install_github("giac01/gbtoolbox")
+}
+```
+
+::: {.callout-important}
+## Installing Stan (`rstan` or `cmdstanr`)
+
+`brms` fits models using Stan, which needs to be installed separately from the R packages above. Two R interfaces ("backends") to Stan are available:
+
+- **`rstan`** is `brms`'s default backend, and is what this tutorial uses. It is installed from CRAN automatically alongside `brms`, but needs a working C++ toolchain to compile models -- see the [rstan installation guide](https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started) if `brm()` fails with a compilation error.
+
+- **`cmdstanr`** is usually faster and is not on CRAN. Install the R package from the Stan R-universe repository, then install `cmdstan` itself:
+
+  ```r
+  install.packages("cmdstanr", repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
+  cmdstanr::check_cmdstan_toolchain(fix = TRUE)
+  cmdstanr::install_cmdstan()
+  ```
+
+  See the [cmdstanr installation guide](https://mc-stan.org/cmdstanr/articles/cmdstanr.html#installing-cmdstan) for details. To use it, add `backend = "cmdstanr"` to the `brm()` calls below.
+:::
 
 ## Load Data
 
@@ -195,6 +256,7 @@ When initially running the models, we got a warning from Stan that "ESS is too l
 For calculating test-retest reliability, it makes sense to fit models at each time point (session) independently.  
 
 ```{r}
+#| label: fit-sdt-models
 #| message: false
 #| warning: false
 #| results: 'hide'
@@ -228,8 +290,12 @@ cond_main_effect_1 = as_draws_df(model_time_1) |>
                      pull(b_condition_contrast) |> 
                      as.numeric()
 
-# Add main effect of condition to random effects 
-subj_draws_time_1 = subj_draws_time_1 + cond_main_effect_1
+# Add main effect of condition to random effects.
+# Each column of subj_draws_time_1 is one posterior draw, so we add the k-th
+# main-effect draw to the k-th column (sweep over dimension 2 = columns).
+# Note that `subj_draws_time_1 + cond_main_effect_1` would NOT do this: R would
+# recycle the vector down the columns, pairing subjects with the wrong draws.
+subj_draws_time_1 = sweep(subj_draws_time_1, 2, cond_main_effect_1, "+")
 
 
 # Time / Session 2
@@ -243,8 +309,8 @@ cond_main_effect_2 = as_draws_df(model_time_2) |>
                      pull(b_condition_contrast) |> 
                      as.numeric()
 
-# Add main effect of condition to random effects 
-subj_draws_time_2 = subj_draws_time_2 + cond_main_effect_2
+# Add main effect of condition to random effects (see comment above)
+subj_draws_time_2 = sweep(subj_draws_time_2, 2, cond_main_effect_2, "+")
 
 
 # Calculate point-estimate of `d'` for each participant (posterior means)
@@ -334,35 +400,24 @@ RMU reliability will increase when subjects' posterior means have greater varian
 
 ### Practice
 
-The code to calculate RMU using the posterior draw matrix is relatively simple. 
-
-`library(gbtoolbox)` is already loaded above (see [Load Data]), but if you don't have it installed, you can either install my R package of miscellaneous R functions `gbtoolbox` available on github, or you can just load the reliability function directly from github (not run here, since `gbtoolbox` is already installed in the docker image used to build this tutorial). Both methods are outlined below:
-
-Install R package from github:
+The code to calculate RMU using the posterior draw matrix is relatively simple. We use the `rmu()` function from `gbtoolbox` (installed and loaded in the [Introduction](#installing-the-required-r-packages)). If you only want the `rmu()` function and not the whole package, you can source it straight from github instead (this gives you the version of `rmu()` that takes a matrix of posterior draws, but not the version that takes a fitted `brms` model, shown [further below](#passing-the-fitted-brms-model-directly), and it requires `ggdist` to be installed):
 
 ```{r}
 #| eval: false
 
-devtools::install_github("giac01/gbtoolbox")
+source("https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/rmu.R")
 
 ```
 
-Or, you can just load the R function using:
-
-```{r}
-#| eval: false
-
-source("https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/reliability.R")
-
-```
-
-
-Calculate RMU reliability at each time point:
+Calculate RMU reliability at each time point. `rmu()` randomly splits the posterior draws in half, so we set a seed before each call to make the results reproducible (and to allow an exact comparison with the alternative approach shown further below):
 
 ```{r}
 
-rmu_time1 = reliability(subj_draws_time_1)
-rmu_time2 = reliability(subj_draws_time_2)
+set.seed(1)
+rmu_time1 = rmu(subj_draws_time_1)
+
+set.seed(1)
+rmu_time2 = rmu(subj_draws_time_2)
 
 ```
 
@@ -381,6 +436,41 @@ print(rmu_time2)
 
 The analyses indicate that reliability at the first time point was `r round(rmu_time1$hdci$rmu_estimate*100)`% (95% Credible Interval = `r round(rmu_time1$hdci$hdci_lowerbound*100)`%-`r round(rmu_time1$hdci$hdci_upperbound*100)`%), and at the second time point reliability was `r round(rmu_time2$hdci$rmu_estimate*100)`% (95% Credible Interval = `r round(rmu_time2$hdci$hdci_lowerbound*100)`%-`r round(rmu_time2$hdci$hdci_upperbound*100)`%).
 
+### Passing the fitted brms model directly
+
+Instead of extracting the matrix of posterior draws yourself, you can pass the fitted `brms` model (an object of class `brmsfit`) straight to `rmu()`. It then extracts the posterior draws for every group-level ("random") effect in the model and calculates RMU for each of them. Our model has two: the random intercept (each participant's general propensity to respond "go") and the random slope for `condition_contrast` (each participant's `d'`). The results are named `<grouping factor>__<coefficient>`, following the `sd_pps__Intercept`/`sd_pps__condition_contrast` naming that `brms` itself uses.
+
+This method is new, so it currently prints a warning (once per R session) asking you to check its output carefully -- which we do below:
+
+```{r}
+#| warning: true
+
+set.seed(1)
+
+rmu_time1_brms = rmu(model_time_1)
+
+```
+
+`rmu()` prints a summary table and (invisibly) returns a list with one element per group-level effect, each with the same structure (`$hdci` and `$reliability_posterior_draws`) as the results above:
+
+```{r}
+
+rmu_time1_brms$pps__condition_contrast$hdci
+
+```
+
+The `d'` (`pps__condition_contrast`) estimate is identical to `rmu_time1` above. The two approaches use exactly the same posterior draws (and we set the same seed, so `rmu()` split them in half in exactly the same way). Adding the main effect of `condition_contrast` to each draw, as we did when building `subj_draws_time_1`, shifts every participant's value within a draw by the same constant, so it has no effect on the correlations that RMU is built from.
+
+In models with several grouping factors (e.g. participants and items), `rmu()` can't tell which one represents your subjects, so it returns results for all of them. Use the `group` and/or `coef` arguments to restrict the output to the effects you're interested in:
+
+```{r}
+
+set.seed(1)
+
+rmu_time2_brms = rmu(model_time_2, group = "pps", coef = "condition_contrast")
+
+```
+
 ## Test-Retest Reliability
 
 The test-retest reliability is a little lower than these estimates (r = `r round(cor(subj_est_time_1, subj_est_time_2),2)`):
@@ -398,6 +488,7 @@ Our estimate for split-half reliability (see below) is similar to RMU, because i
 While `cor.test` gives us a confidence interval, if we want a posterior distribution for this correlation we can use the following code [thanks to Solomon Kurz for code](https://solomonkurz.netlify.app/blog/2019-02-16-bayesian-correlations-let-s-talk-options/).
 
 ```{r}
+#| label: fit-test-retest-correlation
 #| message: false
 #| warning: false
 #| results: 'hide'
@@ -427,8 +518,8 @@ We can then visually compare test-retest reliability with our RMU estimates:
 
 bind_rows(
   data.frame(par = "Test-Retest Posterior", val = test_retest_cor_posterior$rescor__subjesttime2__subjesttime1),
-  data.frame(par = "RMU Session 1", val = rmu_time1$reliability_posterior),
-  data.frame(par = "RMU Session 2", val = rmu_time2$reliability_posterior)
+  data.frame(par = "RMU Session 1", val = rmu_time1$reliability_posterior_draws),
+  data.frame(par = "RMU Session 2", val = rmu_time2$reliability_posterior_draws)
 ) |>
   ggplot(aes(x = val, group = par, col = par, fill = par)) +
   geom_density(alpha = .3) + 

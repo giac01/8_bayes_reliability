@@ -29,7 +29,7 @@ Rather than using the custom Stan model that the authors used, this notebook use
 
 # Setup
 
-Analyses are run inside the [`bignardig/tidyverse461:v5`](https://hub.docker.com/r/bignardig/tidyverse461) Docker container - which includes all dependencies except the cmdstan install (v2.39.0).
+Analyses are run inside the [`bignardig/tidyverse461`](https://hub.docker.com/r/bignardig/tidyverse461) Docker container - which includes all dependencies except the cmdstan install (v2.39.0). The models were fitted with the `v5` tag of the container; this notebook is rendered with `v6`, which differs only in shipping the newer version of `gbtoolbox`, in which the `reliability()` function has been renamed `rmu()` (the old name still works, with a deprecation warning).
 
 The script `02_01_pike_2026_fit_bandit_models.R` fits the main Bayesian models to time 1 and time 2 separately. It models only the N = 115 subjects who completed **both** sessions (the matched test-retest subsample, not the full N = 547 sample).
 
@@ -37,7 +37,7 @@ The script `02_01_pike_2026_fit_bandit_splithalf_models.R` fits the Bayesian mod
 
 The script `02_01_pike_2026_fit_bandit_fullsample.R` fits the Bayesian model to the **full (N = 547) dataset** and also to split-half datasets to estimate RMU and split-half reliability on the full sample.
 
-Run the three fitting scripts once, in order, before rendering this notebook (from the `applied_example_pike/` directory, e.g. inside the `bignardig/tidyverse461:v5` container):
+Run the three fitting scripts once, in order, before rendering this notebook (from the `applied_example_pike/` directory, e.g. inside the `bignardig/tidyverse461:v5` or `v6` container):
 
 ```{bash run-fit-scripts}
 #| eval: false
@@ -566,7 +566,7 @@ testretest |>
 
 # RMU
 
-`gbtoolbox::reliability()` estimates a *within-session* reliability (`rmu`) using the posterior samples from each subject.
+`gbtoolbox::rmu()` estimates a *within-session* reliability (RMU) using the posterior samples from each subject. The saved fits are plain `cmdstanr` fit objects (rather than `hBayesDM` objects, which `rmu()` can also take directly -- see the [RMU bandit tutorial](../tutorial_calculating_rmu_bandit.html#automatically-passing-the-fitted-hbayesdm-model-directly)), so here we extract the posterior-draw matrices ourselves.
 
 ## Retest sample (N = 115)
 
@@ -580,7 +580,7 @@ get_draws_matrix = function(fit, ids, par) {
 extract_rmu = function(fit, ids, session_label, pars = subj_pars) {
   map_dfr(pars, function(p) {
     # browser()
-    rel = reliability(get_draws_matrix(fit, ids, p))
+    rel = rmu(get_draws_matrix(fit, ids, p))
     tibble(
       parameter = p,
       method    = paste0("RMU (", session_label, ")"),
@@ -593,23 +593,23 @@ extract_rmu = function(fit, ids, session_label, pars = subj_pars) {
   })
 }
 
-rmu = bind_rows(
+rmu_retest = bind_rows(
   extract_rmu(fit_bandit_t1, ids_t1, "T1, N = 115"),
   extract_rmu(fit_bandit_t2, ids_t2, "T2, N = 115")
 )
 
-rmu |>
+rmu_retest |>
   gt() |>
   fmt_number(decimals = 3)
 ```
 
-To calculate RMU more simply (if you just want to check a single parameter), you need to extract a matrix of posterior draws with participants on the rows and samples on the columns, then pass to `gbtoolbox::reliability()`.
+To calculate RMU more simply (if you just want to check a single parameter), you need to extract a matrix of posterior draws with participants on the rows and samples on the columns, then pass to `gbtoolbox::rmu()`.
 
 ```{r}
 
 results = fit_bandit_t1$draws(variables = "Arew", format = "matrix") |>  # this is our fitted Stan model
   t() |> # make sure participants are on rows and that draws are on columns
-  gbtoolbox::reliability()
+  gbtoolbox::rmu()
 
 results
 
@@ -643,7 +643,7 @@ rel_empirical_t1 |>
 ```
 
 ```{r empirical-reliability-comparison-t1}
-rel_comparison_t1 = rmu |>
+rel_comparison_t1 = rmu_retest |>
   filter(method == "RMU (T1, N = 115)") |>
   select(parameter, rmu = estimate) |>
   left_join(rel_empirical_t1, by = "parameter") |>
@@ -734,7 +734,7 @@ splithalf_full_sample |>
 ```{r compare-reliability-plot}
 fmt_no_leading_zero = function(x) sub("^(-?)0\\.", "\\1.", sprintf("%.2f", x))
 
-comparison = bind_rows(rmu, testretest, splithalf, rel_full_sample, splithalf_full_sample) %>%
+comparison = bind_rows(rmu_retest, testretest, splithalf, rel_full_sample, splithalf_full_sample) %>%
   arrange(parameter, method) |>
   mutate(
     parameter = case_when(
@@ -861,7 +861,7 @@ rmu_band_labels = c("Poor (< .6)", "Okay (.6-.8)", "Good (> .8)")
 
 extract_rmu_draws = function(fit, ids, session_label, pars = subj_pars) {
   map_dfr(pars, function(p) {
-    rel = reliability(get_draws_matrix(fit, ids, p))
+    rel = rmu(get_draws_matrix(fit, ids, p))
     tibble(
       parameter = p,
       method    = session_label,
@@ -1033,7 +1033,7 @@ ggsave("02_pike_posteriors_transformed.png", width = 7, height = 2.5, dpi = 800)
 extract_rmu_transformed = function(fit, ids, session_label, pars = subj_pars) {
   map_dfr(pars, function(p) {
     m   = transform_draws_matrix(fit, ids, p)
-    rel = reliability(m)
+    rel = rmu(m)
     tibble(
       parameter = p,
       method    = paste0("RMU, probit-transformed (", session_label, ")"),

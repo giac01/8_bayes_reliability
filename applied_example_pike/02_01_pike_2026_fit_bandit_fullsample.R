@@ -2,7 +2,7 @@
 # T1 sample -- all N = 547 subjects in bandit.csv -- rather than just the N = 115 subjects who also
 # completed session 2.
 #
-# Motivation: gbtoolbox::reliability()'s RMU is a within-session reliability estimate computed
+# Motivation: gbtoolbox::rmu()'s RMU (formerly reliability()) is a within-session reliability estimate computed
 # purely from one fitted model's posterior draws -- it never uses session-2 data, so it doesn't
 # need the test-retest-matched subsample at all. Fitting the full T1 sample instead lets
 # 02_02_pike_2026_bandit.qmd report an RMU estimate at the largest N the raw data actually

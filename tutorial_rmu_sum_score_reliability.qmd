@@ -2,7 +2,7 @@
 title: "Estimating Mean Score Reliability with RMU"
 author: "Giacomo Bignardi"
 date: "10/2/2025"
-date-modified: "10/8/2025"
+date-modified: "10/2/2026"
 cache: true
 freeze: true
 format: 
@@ -20,7 +20,9 @@ categories:
 # Introduction
 
 ::: {.callout-note}
-This tutorial can be run and tested inside the docker image `bignardig/tidyverse461:v5`, which has all the required R packages pre-installed.
+This tutorial can be run and tested inside the docker image `bignardig/tidyverse461:v6`, which has all the required R packages pre-installed (apart from `cmdstan` itself -- see [Set Up] below). The `v6` image differs from the `v5` image used for the paper's analysis scripts only in that it ships the newer version of `gbtoolbox`, in which the `reliability()` function has been renamed `rmu()`. The old name still works (with a deprecation warning), so the analysis code is unaffected.
+
+You don't need docker to follow along, though -- you can also run the code the usual way, in your own R installation. The code in [Set Up] will install all the necessary R packages for you.
 :::
 
 This tutorial demonstrates how to use Relative Measurement Uncertainty (RMU) to estimate mean score reliability. See our [pre-print](https://osf.io/h54k8) for more information on RMU.
@@ -28,6 +30,74 @@ This tutorial demonstrates how to use Relative Measurement Uncertainty (RMU) to 
 This brief tutorial assumes your relatively familiar with multilevel Bayesian modelling and logistic regression.
 
 # Set Up
+
+## Getting the code
+
+This tutorial simulates its own data, so there is nothing to download to follow along -- you can simply copy the code chunks into R. If you'd like the source file (`tutorial_rmu_sum_score_reliability.qmd`) to run or render yourself, it is in the paper's GitHub repository, [giac01/8_bayes_reliability](https://github.com/giac01/8_bayes_reliability), alongside the other tutorials and the paper's simulation code. You can clone the repository, which needs [git](https://git-scm.com/downloads) to be installed (the download is around 120 MB):
+
+```bash
+git clone https://github.com/giac01/8_bayes_reliability.git
+cd 8_bayes_reliability
+```
+
+If you'd rather not use git, you can download the same files as a zip archive from the repository page (the green **Code** button, then **Download ZIP**, or [this direct link](https://github.com/giac01/8_bayes_reliability/archive/refs/heads/main.zip)) and unzip it.
+
+If you're using the docker image, start the container from inside the cloned folder, mounting it as the working directory. For example, the following renders this tutorial (`cmdstan` is not included in the image, so you will also need to make it available inside the container -- see the callout below):
+
+```bash
+docker run --rm -it --user rstudio \
+  -v "$PWD":/home/rstudio/8_bayes_reliability \
+  -w /home/rstudio/8_bayes_reliability \
+  bignardig/tidyverse461:v6 \
+  quarto render tutorial_rmu_sum_score_reliability.qmd
+```
+
+## Installing the required R packages
+
+The code below checks for the R packages this tutorial needs and installs any that are missing. All of them are on CRAN, except for my package of miscellaneous R functions, [`gbtoolbox`](https://github.com/giac01/gbtoolbox), which contains the `rmu()` function used to calculate RMU. `gbtoolbox` is installed from github; if you already have an older version installed, which has `reliability()` but no `rmu()`, it will be updated.
+
+```{r}
+#| results: hide
+
+# Install any missing CRAN packages (does nothing if they are all already installed)
+required_packages = c("tidyverse", "brms", "ggdist", "psych", "remotes")
+missing_packages  = required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+if (length(missing_packages) > 0) install.packages(missing_packages)
+
+# Install (or update) gbtoolbox from github if rmu() isn't available
+if (!requireNamespace("gbtoolbox", quietly = TRUE) || !"rmu" %in% getNamespaceExports("gbtoolbox")) {
+  remotes::install_github("giac01/gbtoolbox")
+}
+```
+
+If you only want the `rmu()` function and not the whole package, you can instead source it straight from github (this gives you the version of `rmu()` that takes a matrix of posterior draws, but not the version that takes a fitted `brms` model -- both are shown [below](#calculate-rmu) -- and it requires `ggdist` to be installed):
+
+```{r}
+#| eval: false
+
+source("https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/rmu.R")
+
+```
+
+::: {.callout-important}
+## Installing Stan (`cmdstanr` or `rstan`)
+
+`brms` fits models using Stan, which needs to be installed separately from the R packages above. Two R interfaces ("backends") to Stan are available:
+
+- **`cmdstanr`** (used in this tutorial, via `backend = "cmdstanr"`) is not on CRAN. Install the R package from the Stan R-universe repository, then install `cmdstan` itself, which needs a working C++ toolchain:
+
+  ```r
+  install.packages("cmdstanr", repos = c("https://stan-dev.r-universe.dev", getOption("repos")))
+  cmdstanr::check_cmdstan_toolchain(fix = TRUE)
+  cmdstanr::install_cmdstan()
+  ```
+
+  See the [cmdstanr installation guide](https://mc-stan.org/cmdstanr/articles/cmdstanr.html#installing-cmdstan) if you run into problems.
+
+- **`rstan`** is on CRAN and is installed automatically alongside `brms`, but also requires a C++ toolchain -- see the [rstan installation guide](https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started). It is `brms`'s default backend. If you'd rather use it, delete the `backend = "cmdstanr"` and `threads = threading(...)` arguments from the `brm()` calls below.
+:::
+
+## Simulating data
 
 Imagine we measure the length of 5000 mice 5 times each. Every time we measure a mouse, we will get a slightly different measurement (have you tried holding a mouse with one hand and holding a ruler in another?).
 
@@ -69,7 +139,7 @@ In the above example, we can work out the reliability of the mean score using J,
 
 $$
 \begin{aligned}
-R(\hat{\mathbf{y}}) &= \frac{\sigma^2_{\theta}}{\sigma^2_{\theta}+\sigma^2_{\epsilon}/\text{J}} \\
+\text{R}(\hat{\mathbf{y}}) &= \frac{\sigma^2_{\theta}}{\sigma^2_{\theta}+\sigma^2_{\epsilon}/\text{J}} \\
 &= \frac{3}{3+2/5}= 0.882
 \end{aligned}
 $$
@@ -138,6 +208,7 @@ head(df)
 Let's fit our model:
 
 ```{r}
+#| label: fit-brms-model
 #| output: false
 
 set.seed(1)
@@ -145,7 +216,7 @@ set.seed(1)
 brms_model = brm(
   measurement ~ 1 + (1 | mouse),
   data    = df,
-  chains  = 4, 
+  chains  = 4,
   cores   = 4,
   backend = "cmdstanr",  # This is to speed up model fitting using parallelization
   threads = threading(2) # This is to speed up model fitting using parallelization
@@ -156,7 +227,7 @@ brms_model = brm(
 And look at our results:
 
 ```{r}
-summary(brms_model)
+print(summary(brms_model), digits = 4)
 ```
 
 Our fitted model has the following structure (rounded to whole numbers):
@@ -169,31 +240,72 @@ $$
   \end{aligned}
 $$
 
+### Visualising the posteriors
+
+Before calculating RMU, it helps to look at what it is calculated from. The function below plots the posterior density of the random intercept ($\theta_j$) for a random sample of 200 mice, with one curve per mouse. We wrap it in a function because we will reuse it for the other models fitted later in this tutorial.
+
+```{r}
+
+plot_posterior_densities = function(brms_model, n_subjects = 200, seed = 1){
+  set.seed(seed)
+
+  draws = brms_model |>
+    as_draws_df() |>
+    select(starts_with("r_mouse"))
+
+  draws |>
+    select(sample(ncol(draws), n_subjects)) |>                # random sample of mice
+    pivot_longer(everything(), names_to = "mouse", values_to = "draw") |>
+    ggplot(aes(x = draw, group = mouse)) +
+    geom_line(stat = "density", colour = "steelblue", alpha = .3, linewidth = .3) +
+    labs(
+      x        = "Mouse random intercept (posterior draws)",
+      y        = "Posterior density",
+      subtitle = paste("Posterior densities for", n_subjects, "randomly sampled mice")
+    ) +
+    theme_minimal()
+}
+
+plot_posterior_densities(brms_model)
+
+```
+
+Each mouse's posterior is fairly narrow compared to how spread out the mice are from each other, which is why reliability is high here. This is essentially what RMU quantifies: the variance between the subjects' posteriors relative to the uncertainty within them.
+
 ### Calculate RMU
 
-To calculate RMU, extract the posterior draws for each mouse's random intercept parameter, and plug the matrix of draws into my reliability function. 
+RMU is calculated from the posterior draws of each mouse's random intercept parameter, using the `rmu()` function from `gbtoolbox` (loaded in [Set Up]). `rmu()` can be used in two ways: you can pass it the fitted `brms` model directly and let it extract the posterior draws for you, or you can extract a matrix of posterior draws yourself and pass that. Both are shown below.
 
-`library(gbtoolbox)` is already loaded above (see [Set Up]), but if you don't have it installed, you can either install my R package `gbtoolbox` from github, or you can just load the reliability function directly from github (not run here, since `gbtoolbox` is already installed in the docker image used to build this tutorial). Both methods are outlined below:
+#### Option 1: Pass the fitted brms model directly
 
-Install R package from github:
+If you pass a fitted `brms` model (an object of class `brmsfit`) to `rmu()`, it extracts the posterior draws for every group-level ("random") effect in the model, and calculates RMU for each one. Our model only has one, the random intercept for `mouse`, so we get a single result, named `mouse__Intercept` (following the `sd_mouse__Intercept` naming that `brms` itself uses):
 
 ```{r}
-#| eval: false
+#| warning: true
 
-devtools::install_github("giac01/gbtoolbox")
+set.seed(1)
+
+rmu_brms = rmu(brms_model)
 
 ```
 
-Or, you can just load the R function using the following code (but make sure you also have the R package ggdist installed):
+The function prints a summary table, and (invisibly) returns a list with one element per group-level effect. Each element contains a data frame `hdci` with the point estimate and highest density credible interval, and the vector of RMU posterior draws, `reliability_posterior_draws`:
 
 ```{r}
-#| eval: false
 
-source("https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/reliability.R")
+rmu_brms$mouse__Intercept$hdci
 
 ```
 
+Two things to note here. First, the method for `brms` models is new, so it currently prints a warning (once per R session) asking you to check its output carefully -- we do exactly that below. Second, models with several grouping factors (e.g. `(1 | mouse) + (1 | measurement_occasion)`) or several group-level coefficients (e.g. `(1 + x | mouse)`) will return one RMU estimate per coefficient per grouping factor. `rmu()` can't tell which grouping factor represents your subjects, so use the `group` and `coef` arguments to pick out the ones you want (e.g. `rmu(brms_model, group = "mouse", coef = "Intercept")`).
+
+#### Option 2: Extract the posterior draws yourself
+
+Alternatively, and this is what `rmu()` does for you under the hood, extract the posterior draws for each mouse's random intercept into a matrix with **subjects on the rows and posterior draws on the columns**, and pass that matrix to `rmu()`. This approach works for any Bayesian model, not just those fit with `brms`, as long as you can get hold of the posterior draws for each subject's parameter:
+
 ```{r}
+
+set.seed(1)
 
 posterior_draws = brms_model |>
   as_draws_df() |>
@@ -203,20 +315,129 @@ posterior_draws = brms_model |>
 nrow(posterior_draws) # should equal the number of subjects
 ncol(posterior_draws) # should equal the number of post-warmup posterior draws
 
-gbtoolbox::reliability(posterior_draws)
+rmu(posterior_draws)
 
 ```
 
 Remember to check that the matrix of draws has subjects on the rows and draws on the columns. We can check this because we know we have 5000 subjects, and the function has confirmed this is the case.
+
+Both options give identical results here. They use exactly the same posterior draws, and because `rmu()` randomly splits the posterior draws in half when calculating RMU (see the [go/no-go tutorial](tutorial_calculating_rmu_gonogo.html#rmu) for the details), we set the same seed before each call to get exactly the same random split. Without setting a seed, the two results would still be very similar, but not identical.
+
+## (3) Test-retest reliability of the posterior means {#sec-test-retest}
+
+Because we simulated the data ourselves, we know what the reliability of the mean scores should be (0.882), and we can check it against the true scores. With real data we have neither. The usual way to check the reliability of a score empirically is then *test-retest*: measure the same subjects a second time, and correlate the two sets of scores. We can do exactly the same thing with our Bayesian scores, where each mouse's score is the posterior mean of its random intercept, $\theta_j$.
+
+Let's simulate a second, independent, round of five measurements of the same mice (same true scores, but new measurement errors), and fit the same model again to the new data:
+
+```{r}
+#| label: fit-brms-model-retest
+#| output: false
+
+set.seed(2)
+
+df_retest             = df
+df_retest$measurement = true_scores[df_retest$mouse] + rnorm(N*J, mean = 0, sd = sqrt(error_variance))
+
+brms_model_retest = brm(
+  measurement ~ 1 + (1 | mouse),
+  data    = df_retest,
+  chains  = 4,
+  cores   = 4,
+  backend = "cmdstanr",
+  threads = threading(2)
+  )
+
+```
+
+We then extract each mouse's posterior mean from both fitted models. Note that these posterior means are shrunk towards the population mean, as is usual for random intercepts, but in a balanced design like this one the shrinkage is the same for every mouse, so it does not affect the correlations below:
+
+```{r}
+
+posterior_means_test = brms_model |>
+  as_draws_df() |>
+  select(starts_with("r_mouse")) |>
+  colMeans()
+
+posterior_means_retest = brms_model_retest |>
+  as_draws_df() |>
+  select(starts_with("r_mouse")) |>
+  colMeans()
+
+```
+
+As a quick check of that last point, each mouse's posterior mean should be (almost) a linear function of its mean score across the five measurements, so the two should be near-perfectly correlated:
+
+```{r}
+
+cor(df_average_lengths$average_measurement, posterior_means_test)
+
+```
+
+The correlation between the two sets of posterior means is the test-retest reliability of our Bayesian scores. Let's compare it with everything else we have calculated so far:
+
+```{r}
+
+data.frame(
+  quantity = c(
+    "Reliability from the formula",
+    "Coefficient alpha",
+    "RMU",
+    "Test-retest correlation of posterior means",
+    "Squared cor. between posterior means and true scores"
+  ),
+  estimate = c(
+    true_score_variance/(true_score_variance+error_variance/J),
+    alpha,
+    rmu_brms$mouse__Intercept$hdci$rmu_estimate,
+    cor(posterior_means_test, posterior_means_retest),
+    cor(posterior_means_test, true_scores)^2
+  ) |> round(3)
+)
+
+```
+
+They all agree. The key difference is what each one needs: the formula needs the simulation parameters, the squared correlation with the true scores needs the true scores (which we never have in practice), and the test-retest correlation needs every mouse to be measured twice. RMU gets to the same answer from a single round of measurements.
+
+## (4) Comparing the mean scores and the posterior means
+
+We have seen that the mean scores and the posterior means are almost perfectly correlated, but they are not the same numbers. Let's compare their means and variances:
+
+```{r}
+
+data.frame(
+  score    = c("Mean score", "Posterior mean of random intercept"),
+  mean     = c(mean(df_average_lengths$average_measurement), mean(posterior_means_test)),
+  variance = c(var(df_average_lengths$average_measurement),  var(posterior_means_test))
+) |>
+  mutate(across(c(mean, variance), \(x) round(x, 3)))
+
+```
+
+The means differ simply because the random intercepts are *deviations* from the population intercept (around 10cm). Adding the model's intercept to each mouse's posterior mean puts them back on the same scale as the mean scores.
+
+The variances are more interesting. From the simulation, the true scores have a variance of 3. The variance of the mean scores is *larger* than this, because each mean score still contains some measurement error: we expect $\sigma^2_{\theta} + \sigma^2_{\epsilon}/\text{J} = 3 + 2/5 = 3.4$. The variance of the posterior means is *smaller* than 3, because each posterior mean is shrunk towards the population mean. In this balanced design, the shrinkage factor is the same for every mouse and is equal to the reliability of the mean scores, $\text{R} = 0.882$, so the posterior means are just the mean scores (centred) multiplied by $\text{R}$. We expect their variance to be $\text{R}^2 \times 3.4 = \text{R} \times 3 = 2.65$. Both observed variances are a little above these expected values because, by chance, the true score variance in our simulated sample of mice came out slightly above 3 (the model estimates it at about 3.1), but the relationship between them holds.
+
+This gives us another way of looking at reliability: the variance of the posterior means, relative to the model's estimate of the true score variance (the squared `sd(Intercept)` from the model summary), is approximately equal to the reliability:
+
+```{r}
+
+true_score_variance_estimate = VarCorr(brms_model)$mouse$sd["Intercept", "Estimate"]^2
+
+var(posterior_means_test) / true_score_variance_estimate
+
+```
+
+Two things to take away from this. First, the variance of the posterior means is *not* an estimate of the true score variance -- it is deflated by shrinkage -- so if you want the true score variance, use the model's `sd(Intercept)` estimate. Second, the posterior means are only shrunk by the same amount for every mouse in a balanced design. When the number of measurements differs between mice, as in the censored example [below](#beyond-coefficient-alpha), mice with fewer measurements are shrunk more, and the posterior means are no longer just a rescaled version of the mean scores.
 
 # Recap of simulation code
 
 Just to check this wasn't a fluke, we can play around with the parameters J and true_score_variance and error_variance below to show that we get the correct result across different simulation conditions:
 
 ```{r}
+#| label: fit-brms-model-recap
 #| output: false
 
-rm(list=ls())
+rm(list = setdiff(ls(), "plot_posterior_densities")) # clear everything except our plotting function
 set.seed(1)
 N                   = 5000 # number of subjects (mice)
 J                   = 3    # number of measurements per subject
@@ -248,20 +469,15 @@ cor(df_average_lengths$average_measurement, true_scores)^2
 
 brms_model = brm(
   measurement ~ 1 + (1 | mouse),
-  data    = df, 
-  chains  = 2, 
+  data    = df,
+  chains  = 2,
   cores   = 2,
-  refresh = 0,           # This hides the progress bar 
+  refresh = 0,           # This hides the progress bar
   backend = "cmdstanr",  # This is to speed up model fitting using parallelization
   threads = threading(4) # This is to speed up model fitting using parallelization
   )
 
-posterior_draws = brms_model |>
-  as_draws_df() |>
-  select(starts_with("r_mouse")) |>
-  t()
-
-gbtoolbox::reliability(posterior_draws)
+rmu_recap = rmu(brms_model)
 
 ```
 
@@ -280,8 +496,16 @@ cor(df_average_lengths$average_measurement, true_scores)^2
 
 cat("RMU:\n")
 
-gbtoolbox::reliability(posterior_draws)
+rmu_recap
 
+
+```
+
+With only three measurements per mouse and a much larger error variance, the posteriors are now wide relative to the spread between mice, so the curves overlap heavily. Compare this plot to the one from our first model:
+
+```{r}
+
+plot_posterior_densities(brms_model)
 
 ```
 
@@ -290,137 +514,170 @@ gbtoolbox::reliability(posterior_draws)
 
 We can leverage the flexibility of brms + RMU to estimate reliability in more complex scenarios.
 
-In this next example, we'll simulate binary outcome data (1 = success, 0 = fail) where:
+We will update the simulation code from our first example. This time our mice are a little larger, with a mean true score of 13cm rather than 10cm, so that the short ruler is a real problem. We also make the following two adjustments:
 
-- Each subject completes between 3-9 trials (varying number of measurements per subject)
-- Subjects improve with practice (probability of success increases on each subsequent trial)
-- We're interested in individual differences in first-trial performance
+1. For each mouse, we randomly draw a number between 2 and 5 for the number of measurements.
+2. Measurements greater than 15cm are recoded as ">15cm". In other words, these measurements are *right-censored*: we know the mouse is longer than 15cm, but not by how much.
 
-Because subjects completed different numbers of trials, simply averaging their scores would be misleading - those who completed more trials had more opportunities to practice and improve.
-
-Instead, we'll use a multilevel logistic regression model to estimate each subject's probability of success on the first trial. We'll include trial number as fixed covariate in the model. We'll code trial number (j) starting at 0 for the first trial, so the random intercept directly represents each subject's first-trial performance (on the logit scale).
+To store the censored measurements in a form that `brms` understands, we keep two columns. The `measurement` column holds the ruler reading, with a reading of ">15cm" recorded as the censoring point (15). The `censored` column indicates whether each reading was observed exactly (`"none"`) or censored (`"right"`). We wrap the simulation in a function, because we will reuse it below to simulate a second round of measurements of the same mice.
 
 ```{r}
-#| output: false
+#| label: simulate-censored-data
 
-rm(list=ls())
+rm(list = setdiff(ls(), "plot_posterior_densities")) # clear everything except our plotting function
 set.seed(1)
 N                   = 5000 # number of subjects (mice)
-J                   = sample(3:9, size = N, replace = TRUE)    # number of measurements per subject
-true_score_variance = 1
+true_score_variance = 3
 error_variance      = 2
+ruler_length        = 15   # measurements above this are censored
 
-df = expand.grid(j = 1:10, mouse = 1:N)
+true_scores = rnorm(N, mean = 13, sd = sqrt(true_score_variance)) # slightly larger mice than before
 
-for(i in 1:N){
-  df = df |>
-    filter(!(mouse == i & j > J[i]))
+# Simulate one round of measurements for every mouse
+simulate_measurements = function(true_scores){
+  N  = length(true_scores)
+  J  = sample(2:5, size = N, replace = TRUE) # number of measurements per mouse
+
+  df = data.frame(
+    mouse = rep(1:N, times = J),
+    j     = sequence(J)
+  )
+
+  df$measurement = true_scores[df$mouse] + rnorm(nrow(df), mean = 0, sd = sqrt(error_variance))
+  df$censored    = ifelse(df$measurement > ruler_length, "right", "none") # ">15cm" readings
+  df$measurement = pmin(df$measurement, ruler_length)                     # are recorded as 15
+
+  return(df)
 }
 
-prob_success_first_trial = rbeta(N,3,3)  # probability of success on first trial
+df = simulate_measurements(true_scores)
 
-df$prob_success_first_trial = prob_success_first_trial[df$mouse] |> qlogis()
+head(df, 10)
 
-df$y = rbinom(nrow(df), size = 1, prob = plogis(df$prob_success_first_trial + .1*df$j))
+```
 
-df$j = df$j - 1
+The number of measurements now varies between mice:
 
-brms_model_logistic = brm(
-  y ~ 1 + j + (1 | mouse),
+```{r}
+
+df |>
+  count(mouse, name = "n_measurements") |>
+  count(n_measurements, name = "n_mice")
+
+```
+
+And `r sum(df$censored == "right")` of the `r nrow(df)` measurements (`r round(100 * mean(df$censored == "right"), 1)`%) were censored at ">15cm":
+
+```{r}
+
+df |>
+  filter(censored == "right") |>
+  head()
+
+```
+
+This scenario shows where our approach can shine. Coefficient alpha cannot be computed here, as it assumes that every mouse is measured five times (pivoting the data to wide format, as we did above, would leave most mice with missing columns). Alpha also assumes that we have continuous measurements, whereas in this case our measurements are censored. With RMU, we can simply update our model to account for censoring in the outcome variable, which is relatively straightforward in `brms`: we add `| cens(censored)` to the left-hand side of the model formula. For the censored rows, `brms` then replaces the normal likelihood with the probability that the measurement exceeds 15cm (the upper tail of the normal distribution), rather than treating them as if the mouse were exactly 15cm long.
+
+```{r}
+#| label: fit-brms-model-censored
+#| output: false
+
+brms_model_censored = brm(
+  measurement | cens(censored) ~ 1 + (1 | mouse),
   data    = df,
-  family  = bernoulli(link = "logit"),
   chains  = 4,
   cores   = 4,
   backend = "cmdstanr",
   threads = threading(2)
 )
 
-
 ```
 
-Our data structure looks like this:
+Despite the censoring and the uneven number of measurements per mouse, the model recovers the simulation parameters nicely: the estimated true score SD is close to $\sqrt{3} = 1.73$ and the residual (measurement error) SD is close to $\sqrt{2} = 1.41$.
 
 ```{r}
 
-df |> 
-  select(-prob_success_first_trial) |>
-  slice(1:10)
+print(summary(brms_model_censored), digits = 4)
 
 ```
 
-Fitted brms model summary: 
+RMU is calculated from the fitted model exactly as before:
 
 ```{r}
 
-summary(brms_model_logistic)
+rmu_censored = rmu(brms_model_censored)
 
 ```
 
-We visualise the posterior distribution for each subject's random intercept below. 
-
-By transforming the random intercept with the inverse logit function we can look at our posterior on the probability scale too - these values tell us the estimated probability of success on the first trial for each subject.  
-
+The posteriors now vary in width between mice, because each mouse was measured a different number of times and, for the longer mice, some of those measurements were censored:
 
 ```{r}
-posterior_draws = brms_model_logistic |>
+
+plot_posterior_densities(brms_model_censored)
+
+```
+
+### Test-retest reliability of the posterior mean estimates
+
+In our first example, the balanced design meant that we could work out the expected reliability of the mean scores from a simple formula. That formula no longer applies here, because each mouse is measured a different number of times (and some measurements are censored). Instead, we can find the "true" reliability of our mouse length estimates empirically, using the same test-retest approach as [before](#sec-test-retest): we send our intern back to measure the same mice a second time.
+
+As before, we simulate a second, independent, round of measurements of the same mice (same true scores, but this time also a new number of measurements for each mouse, as well as new measurement errors), and fit the same model again:
+
+```{r}
+#| label: fit-brms-model-censored-retest
+#| output: false
+
+set.seed(2)
+
+df_retest = simulate_measurements(true_scores)
+
+brms_model_censored_retest = brm(
+  measurement | cens(censored) ~ 1 + (1 | mouse),
+  data    = df_retest,
+  chains  = 4,
+  cores   = 4,
+  backend = "cmdstanr",
+  threads = threading(2)
+)
+
+rmu_censored_retest = rmu(brms_model_censored_retest)
+
+```
+
+We then extract the posterior mean of each mouse's random intercept from both fitted models. The correlation between the two sets of posterior means is the test-retest reliability of our estimates, and should match RMU. We can also check the squared correlation between the posterior means and the true scores, as we did before:
+
+```{r}
+
+posterior_means_test = brms_model_censored |>
   as_draws_df() |>
   select(starts_with("r_mouse")) |>
-  t()
+  colMeans()
 
-posterior_draws |>
-  t() |> # make sure participant is on the COLUMN for pivot_wider!
-  data.frame() |>
-  (\(x) `colnames<-`(x, 1:ncol(x)))() |>
-  pivot_longer(cols = everything()) |>
-  filter(as.numeric(name) < 201) |>
-  ggplot(aes(x = value, group = name)) +
-  geom_density(fill = NA, color = ggplot2::alpha("black", .5)) +
-  theme_bw() +
-  guides(color = "none") +
-  labs(
-    subtitle = "Random Intercept Posterior Distributions for each subject \nLogit scale, first 200 subjects only"
-  )
+posterior_means_retest = brms_model_censored_retest |>
+  as_draws_df() |>
+  select(starts_with("r_mouse")) |>
+  colMeans()
 
-posterior_draws |>
-  t() |> # make sure participant is on the COLUMN for pivot_wider!
-  data.frame() |>
-  (\(x) `colnames<-`(x, 1:ncol(x)))() |>
-  pivot_longer(cols = everything()) |>
-  filter(as.numeric(name) < 201) |>
-  mutate(value = plogis(value)) |>
-  ggplot(aes(x = value, group = name)) +
-  geom_density(fill = NA, color = ggplot2::alpha("black", .5)) +
-  theme_bw() +
-  labs(
-    subtitle = "Random Intercept Posterior Distributions for each subject \nProbability scale, first 200 subjects only"
-  )
-
+data.frame(
+  quantity = c(
+    "RMU, first round of measurements",
+    "RMU, second round of measurements",
+    "Test-retest correlation of posterior means",
+    "Squared cor. with true scores, first round",
+    "Squared cor. with true scores, second round"
+  ),
+  estimate = c(
+    rmu_censored$mouse__Intercept$hdci$rmu_estimate,
+    rmu_censored_retest$mouse__Intercept$hdci$rmu_estimate,
+    cor(posterior_means_test, posterior_means_retest),
+    cor(posterior_means_test, true_scores)^2,
+    cor(posterior_means_retest, true_scores)^2
+  ) |> round(3)
+)
 
 ```
 
-To find the "true" reliability, we can calculate the squared correlation between the estimated probabilities of success for each subject (using posterior means for the random intercepts) and the known probabilities of success. 
-
-Rather than working directly with the probabilities, we will calculate the correlation on the logit scale.
-
-```{r}
-
-
-posterior_means = rowMeans(posterior_draws)
-
-cor(posterior_means,prob_success_first_trial)^2
-
-```
-
-
-```{r}
-
-gbtoolbox::reliability(posterior_draws)
-
-```
-
-Our RMU estimate of reliability closely matches the squared correlation between estimated and true scores - which is reassuring!
-
-A more robust approach to find the "true" reliability would be to simulate data from two time points for each participant - and show that the correlation between estimates from each time point is equivalent to RMU. In the case that each subject's *expected* score corresponds to `prob_success_first_trial`, then either approach will yield the same result, however this is not always the case.  
+The RMU estimates from both rounds of measurements closely match the test-retest correlation of the posterior means, and the squared correlation between the posterior means and the true scores. In other words, RMU recovers the reliability of our estimates from a *single* round of measurements, without the need to measure every mouse twice, and without assuming that every mouse was measured the same number of times with an infinitely long ruler.
 
 # Appendix: Deriving The Mean Score Reliability Formula {#sec-appendix}
 

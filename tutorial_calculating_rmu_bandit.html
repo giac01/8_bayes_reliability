@@ -2354,6 +2354,10 @@ window.Quarto = {
   </ul></li>
   <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a>
   <ul class="collapse">
+  <li><a href="#getting-the-code-and-data" id="toc-getting-the-code-and-data" class="nav-link" data-scroll-target="#getting-the-code-and-data">Getting the code and data</a></li>
+  <li><a href="#installing-the-required-r-packages" id="toc-installing-the-required-r-packages" class="nav-link" data-scroll-target="#installing-the-required-r-packages">Installing the required R packages</a></li>
+  <li><a href="#load-packages" id="toc-load-packages" class="nav-link" data-scroll-target="#load-packages">Load packages</a></li>
+  <li><a href="#pointing-cmdstanr-at-cmdstan" id="toc-pointing-cmdstanr-at-cmdstan" class="nav-link" data-scroll-target="#pointing-cmdstanr-at-cmdstan">Pointing cmdstanr at cmdstan</a></li>
   <li><a href="#load-data" id="toc-load-data" class="nav-link" data-scroll-target="#load-data">Load Data</a></li>
   <li><a href="#the-fluctuating-bandit-task" id="toc-the-fluctuating-bandit-task" class="nav-link" data-scroll-target="#the-fluctuating-bandit-task">The Fluctuating Bandit Task</a></li>
   <li><a href="#prepare-data-for-hbayesdm" id="toc-prepare-data-for-hbayesdm" class="nav-link" data-scroll-target="#prepare-data-for-hbayesdm">Prepare Data for hBayesDM</a></li>
@@ -2414,6 +2418,12 @@ window.Quarto = {
     </div>
   </div>
   
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">October 2, 2026</p>
+    </div>
+  </div>
     
   </div>
   
@@ -2435,7 +2445,8 @@ Note
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>This tutorial can be run and tested inside the docker image <code>bignardig/tidyverse461:v5</code>, which has all the required R packages pre-installed (note: <code>cmdstan</code> still needs to be installed separately – see <a href="#setup">Setup</a> below).</p>
+<p>This tutorial can be run and tested inside the docker image <code>bignardig/tidyverse461:v6</code>, which has all the required R packages pre-installed (note: <code>cmdstan</code> still needs to be installed separately – see <a href="#setup">Setup</a> below). The <code>v6</code> image differs from the <code>v5</code> image used for the paper’s analysis scripts only in that it ships the newer version of <code>gbtoolbox</code>, in which the <code>reliability()</code> function has been renamed <code>rmu()</code>. The old name still works (with a deprecation warning), so the analysis code is unaffected.</p>
+<p>You don’t need docker to follow along, though – you can also run the code the usual way, in your own R installation. The code in <a href="#setup">Setup</a> will install all the necessary R packages for you.</p>
 </div>
 </div>
 <p>This is a brief walk-through of how to calculate reliability using relative measurement uncertainty (RMU) described in our <a href="https://osf.io/preprints/psyarxiv/h54k8_v1">pre-print</a>, this time applied to a <strong>reinforcement learning task</strong> rather than a signal-detection model (see the <a href="tutorial_calculating_rmu_gonogo.html">go/no-go tutorial</a> for that example).</p>
@@ -2444,7 +2455,7 @@ Note
 <li>How data from a “fluctuating bandit” reinforcement learning task looks.</li>
 <li>How to fit a hierarchical Bayesian model to this data using <code>hBayesDM::bandit4arm_4par()</code>.</li>
 <li>How to calculate RMU reliability <strong>manually</strong>, by pulling a matrix of posterior draws out of the fitted model yourself. This approach can be applied beyond <code>hBayesDM</code> models.</li>
-<li>How to calculate RMU reliability <strong>automatically</strong>, by passing the fitted <code>hBayesDM</code> model object straight to <code>reliability()</code>.</li>
+<li>How to calculate RMU reliability <strong>automatically</strong>, by passing the fitted <code>hBayesDM</code> model object straight to <code>rmu()</code>.</li>
 </ol>
 <p>In the folder <code>applied_example_pike/</code> I have more analyses, directly comparing RMU estimates to split-half and test-retest estimates. This tutorial will focus on estimating reliability using RMU, rather than providing a comprehensive workflow for fitting Bayesian models with best practices.</p>
 <section id="data" class="level2">
@@ -2456,67 +2467,123 @@ Note
 </section>
 <section id="setup" class="level1">
 <h1>Setup</h1>
+<section id="getting-the-code-and-data" class="level2">
+<h2 class="anchored" data-anchor-id="getting-the-code-and-data">Getting the code and data</h2>
+<p>The source file for this tutorial (<code>tutorial_calculating_rmu_bandit.qmd</code>) and the bandit data it uses (in <code>data/pike_2026/</code>) are both in the paper’s GitHub repository, <a href="https://github.com/giac01/8_bayes_reliability">giac01/8_bayes_reliability</a>. The easiest way to get everything is to clone the repository, which needs <a href="https://git-scm.com/downloads">git</a> to be installed (the download is around 120 MB, as the repository also contains the paper’s simulation code and results):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/giac01/8_bayes_reliability.git</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> 8_bayes_reliability</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>If you’d rather not use git, you can download the same files as a zip archive from the repository page (the green <strong>Code</strong> button, then <strong>Download ZIP</strong>, or <a href="https://github.com/giac01/8_bayes_reliability/archive/refs/heads/main.zip">this direct link</a>) and unzip it.</p>
+<p>The tutorial <code>.qmd</code> files sit in the root folder of the repository, and the data paths in the code below are relative to that folder. If you open the <code>.qmd</code> file in RStudio and run the chunks or render it, the working directory is set to the repository root for you. If you’re instead running the code in a plain R session, set the working directory to the repository root first, e.g. <code>setwd(&quot;~/8_bayes_reliability&quot;)</code>.</p>
+<p>If you’re using the docker image, start the container from inside the cloned folder, mounting it as the working directory. For example, the following renders this tutorial (<code>cmdstan</code> is not included in the image, so you will also need to make it available inside the container – see <a href="#pointing-cmdstanr-at-cmdstan">Pointing cmdstanr at cmdstan</a> below):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">docker</span> run <span class="at">--rm</span> <span class="at">-it</span> <span class="at">--user</span> rstudio <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">-v</span> <span class="st">&quot;</span><span class="va">$PWD</span><span class="st">&quot;</span>:/home/rstudio/8_bayes_reliability <span class="dt">\</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">-w</span> /home/rstudio/8_bayes_reliability <span class="dt">\</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  bignardig/tidyverse461:v6 <span class="dt">\</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  quarto render tutorial_calculating_rmu_bandit.qmd</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</section>
+<section id="installing-the-required-r-packages" class="level2">
+<h2 class="anchored" data-anchor-id="installing-the-required-r-packages">Installing the required R packages</h2>
+<p>The code below checks for the R packages this tutorial needs and installs any that are missing. Two of them are not on CRAN:</p>
+<ul>
+<li>My package of miscellaneous R functions, <a href="https://github.com/giac01/gbtoolbox"><code>gbtoolbox</code></a>, which contains the <code>rmu()</code> function used to calculate RMU. It is installed from github; if you already have an older version installed, which has <code>reliability()</code> but no <code>rmu()</code>, it will be updated.</li>
+<li><code>hBayesDM</code> <strong>version 2.0 or later</strong>, which fits its models via <code>cmdstanr</code>. The version on CRAN (1.x) uses <code>rstan</code> instead, and its fitted model objects are not supported by <code>rmu()</code>, so we install the development version from github.</li>
+</ul>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(<span class="at">list =</span> <span class="fu">ls</span>(<span class="at">all.names =</span> <span class="cn">TRUE</span>))</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">1</span>)</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(hBayesDM)</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(cmdstanr)</span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gbtoolbox)</span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gt)</span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>data_dir <span class="ot">=</span> <span class="fu">file.path</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;pike_2026&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Install any missing CRAN packages (does nothing if they are all already installed)</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>required_packages <span class="ot">=</span> <span class="fu">c</span>(<span class="st">&quot;tidyverse&quot;</span>, <span class="st">&quot;gt&quot;</span>, <span class="st">&quot;ggdist&quot;</span>, <span class="st">&quot;knitr&quot;</span>, <span class="st">&quot;remotes&quot;</span>)</span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>missing_packages  <span class="ot">=</span> required_packages[<span class="sc">!</span><span class="fu">sapply</span>(required_packages, requireNamespace, <span class="at">quietly =</span> <span class="cn">TRUE</span>)]</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">length</span>(missing_packages) <span class="sc">&gt;</span> <span class="dv">0</span>) <span class="fu">install.packages</span>(missing_packages)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Install (or update) gbtoolbox from github if rmu() isn&#39;t available</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;gbtoolbox&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>) <span class="sc">||</span> <span class="sc">!</span><span class="st">&quot;rmu&quot;</span> <span class="sc">%in%</span> <span class="fu">getNamespaceExports</span>(<span class="st">&quot;gbtoolbox&quot;</span>)) {</span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>  remotes<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;giac01/gbtoolbox&quot;</span>)</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Install hBayesDM &gt;= 2.0 (cmdstanr backend) from github if it isn&#39;t available</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="sc">!</span><span class="fu">requireNamespace</span>(<span class="st">&quot;hBayesDM&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>) <span class="sc">||</span> <span class="fu">packageVersion</span>(<span class="st">&quot;hBayesDM&quot;</span>) <span class="sc">&lt;</span> <span class="st">&quot;2.0&quot;</span>) {</span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>  remotes<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;CCS-Lab/hBayesDM&quot;</span>, <span class="at">subdir =</span> <span class="st">&quot;R&quot;</span>)</span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<p>This tutorial uses <code>reliability()</code>, which lives in my R package of miscellaneous R functions, <a href="https://github.com/giac01/gbtoolbox"><code>gbtoolbox</code></a>. You can either install the package from github, or just source the <code>reliability()</code> function directly – both options are shown below (not run here, since <code>gbtoolbox</code> is already installed in the docker image used to build this tutorial):</p>
-<p>Install the R package from github:</p>
+<p>If you only want the <code>rmu()</code> function and not the whole <code>gbtoolbox</code> package, you can source it straight from github instead (this gives you the version of <code>rmu()</code> that takes a matrix of posterior draws, used in the “manual” approach below, but not the version that takes a fitted <code>hBayesDM</code> model used in the “automatic” approach, and it requires <code>ggdist</code> to be installed):</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>devtools<span class="sc">::</span><span class="fu">install_github</span>(<span class="st">&quot;giac01/gbtoolbox&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(<span class="st">&quot;https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/rmu.R&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
-<p>Or, just load the R function directly (make sure you also have <code>ggdist</code> installed):</p>
-<div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">source</span>(<span class="st">&quot;https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/reliability.R&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="callout callout-style-default callout-important callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
 </div>
-<p><code>hBayesDM</code>’s Stan models are fit via <code>cmdstanr</code>, which needs a working cmdstan installation. If <code>cmdstanr</code> doesn’t already know where cmdstan is (e.g. from a previous <code>set_cmdstan_path()</code> call, saved in <code>cmdstanr</code>’s config file), we point it at one below – either via a <code>CMDSTAN</code> environment variable, or by editing the fallback path directly (see the <a href="https://mc-stan.org/cmdstanr/articles/cmdstanr.html#installing-cmdstan">cmdstanr installation guide</a> if you don’t have cmdstan installed):</p>
+<div class="callout-title-container flex-fill">
+<span class="screen-reader-only">Important</span>Installing <code>cmdstanr</code> and <code>cmdstan</code>
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>hBayesDM</code> (&gt;= 2.0) fits its Stan models via <code>cmdstanr</code>, so unlike the <code>brms</code> tutorials there is no option to use <code>rstan</code> instead. <code>cmdstanr</code> is not on CRAN: install the R package from the Stan R-universe repository, then install <code>cmdstan</code> itself (this needs a working C++ toolchain):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">install.packages</span>(<span class="st">&quot;cmdstanr&quot;</span>, <span class="at">repos =</span> <span class="fu">c</span>(<span class="st">&quot;https://stan-dev.r-universe.dev&quot;</span>, <span class="fu">getOption</span>(<span class="st">&quot;repos&quot;</span>)))</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>cmdstanr<span class="sc">::</span><span class="fu">check_cmdstan_toolchain</span>(<span class="at">fix =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>cmdstanr<span class="sc">::</span><span class="fu">install_cmdstan</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>See the <a href="https://mc-stan.org/cmdstanr/articles/cmdstanr.html#installing-cmdstan">cmdstanr installation guide</a> if you run into problems.</p>
+</div>
+</div>
+</section>
+<section id="load-packages" class="level2">
+<h2 class="anchored" data-anchor-id="load-packages">Load packages</h2>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>cmdstan_path_candidate <span class="ot">=</span> <span class="fu">Sys.getenv</span>(<span class="st">&quot;CMDSTAN&quot;</span>, <span class="at">unset =</span> <span class="fu">file.path</span>(<span class="fu">Sys.getenv</span>(<span class="st">&quot;HOME&quot;</span>), <span class="st">&quot;.cmdstan&quot;</span>, <span class="st">&quot;cmdstan-2.39.0&quot;</span>))</span>
-<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">dir.exists</span>(cmdstan_path_candidate)) cmdstanr<span class="sc">::</span><span class="fu">set_cmdstan_path</span>(cmdstan_path_candidate)</span>
-<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>cmdstanr<span class="sc">::</span><span class="fu">cmdstan_path</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="fu">rm</span>(<span class="at">list =</span> <span class="fu">ls</span>(<span class="at">all.names =</span> <span class="cn">TRUE</span>))</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">1</span>)</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(hBayesDM)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(cmdstanr)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gbtoolbox)</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(gt)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>data_dir <span class="ot">=</span> <span class="fu">file.path</span>(<span class="st">&quot;data&quot;</span>, <span class="st">&quot;pike_2026&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</div>
+</section>
+<section id="pointing-cmdstanr-at-cmdstan" class="level2">
+<h2 class="anchored" data-anchor-id="pointing-cmdstanr-at-cmdstan">Pointing cmdstanr at cmdstan</h2>
+<p>If <code>cmdstanr</code> doesn’t already know where cmdstan is (e.g. from a previous <code>set_cmdstan_path()</code> call, saved in <code>cmdstanr</code>’s config file, or because it was installed to the default location with <code>install_cmdstan()</code>), we point it at one below – either via a <code>CMDSTAN</code> environment variable, or by editing the fallback path directly:</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb7"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>cmdstan_path_candidate <span class="ot">=</span> <span class="fu">Sys.getenv</span>(<span class="st">&quot;CMDSTAN&quot;</span>, <span class="at">unset =</span> <span class="fu">file.path</span>(<span class="fu">Sys.getenv</span>(<span class="st">&quot;HOME&quot;</span>), <span class="st">&quot;.cmdstan&quot;</span>, <span class="st">&quot;cmdstan-2.39.0&quot;</span>))</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">dir.exists</span>(cmdstan_path_candidate)) cmdstanr<span class="sc">::</span><span class="fu">set_cmdstan_path</span>(cmdstan_path_candidate)</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>cmdstanr<span class="sc">::</span><span class="fu">cmdstan_path</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] &quot;/home/rstudio/.cmdstan/cmdstan-2.39.0&quot;</code></pre>
 </div>
 </div>
+</section>
 <section id="load-data" class="level2">
 <h2 class="anchored" data-anchor-id="load-data">Load Data</h2>
 <p><code>bandit.csv</code> contains every participant’s time 1 data (N = 547); <code>bandit2.csv</code> contains time 2 data, only for the N = 115 participants who returned for a second session. We use the IDs in <code>bandit2.csv</code> purely to identify our smaller sub-sample, then keep only their time 1 rows from <code>bandit.csv</code>.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>bandit_raw_t1 <span class="ot">=</span> <span class="fu">read_csv</span>(<span class="fu">file.path</span>(data_dir, <span class="st">&quot;bandit.csv&quot;</span>),  <span class="at">show_col_types =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>bandit_raw_t2 <span class="ot">=</span> <span class="fu">read_csv</span>(<span class="fu">file.path</span>(data_dir, <span class="st">&quot;bandit2.csv&quot;</span>), <span class="at">show_col_types =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>ids_retest_sample <span class="ot">=</span> bandit_raw_t2 <span class="sc">|&gt;</span> <span class="fu">distinct</span>(id) <span class="sc">|&gt;</span> <span class="fu">arrange</span>(id) <span class="sc">|&gt;</span> <span class="fu">pull</span>(id)</span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>bandit_raw_t1 <span class="ot">=</span> bandit_raw_t1 <span class="sc">|&gt;</span></span>
-<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(id <span class="sc">%in%</span> ids_retest_sample) <span class="sc">|&gt;</span></span>
-<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(id, trial_nr, is_gain, is_loss, response)</span>
-<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>n_trials_per_pps <span class="ot">=</span> <span class="fu">count</span>(bandit_raw_t1, id)<span class="sc">$</span>n</span>
-<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Number of participants:&quot;</span>, <span class="fu">n_distinct</span>(bandit_raw_t1<span class="sc">$</span>id), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>bandit_raw_t1 <span class="ot">=</span> <span class="fu">read_csv</span>(<span class="fu">file.path</span>(data_dir, <span class="st">&quot;bandit.csv&quot;</span>),  <span class="at">show_col_types =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>bandit_raw_t2 <span class="ot">=</span> <span class="fu">read_csv</span>(<span class="fu">file.path</span>(data_dir, <span class="st">&quot;bandit2.csv&quot;</span>), <span class="at">show_col_types =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>ids_retest_sample <span class="ot">=</span> bandit_raw_t2 <span class="sc">|&gt;</span> <span class="fu">distinct</span>(id) <span class="sc">|&gt;</span> <span class="fu">arrange</span>(id) <span class="sc">|&gt;</span> <span class="fu">pull</span>(id)</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>bandit_raw_t1 <span class="ot">=</span> bandit_raw_t1 <span class="sc">|&gt;</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(id <span class="sc">%in%</span> ids_retest_sample) <span class="sc">|&gt;</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(id, trial_nr, is_gain, is_loss, response)</span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>n_trials_per_pps <span class="ot">=</span> <span class="fu">count</span>(bandit_raw_t1, id)<span class="sc">$</span>n</span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Number of participants:&quot;</span>, <span class="fu">n_distinct</span>(bandit_raw_t1<span class="sc">$</span>id), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Number of participants: 115 </code></pre>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Trials per participant:&quot;</span>, <span class="cf">if</span> (<span class="fu">length</span>(<span class="fu">unique</span>(n_trials_per_pps)) <span class="sc">==</span> <span class="dv">1</span>) <span class="fu">unique</span>(n_trials_per_pps) <span class="cf">else</span> <span class="fu">paste</span>(<span class="fu">range</span>(n_trials_per_pps), <span class="at">collapse =</span> <span class="st">&quot;-&quot;</span>), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Trials per participant:&quot;</span>, <span class="cf">if</span> (<span class="fu">length</span>(<span class="fu">unique</span>(n_trials_per_pps)) <span class="sc">==</span> <span class="dv">1</span>) <span class="fu">unique</span>(n_trials_per_pps) <span class="cf">else</span> <span class="fu">paste</span>(<span class="fu">range</span>(n_trials_per_pps), <span class="at">collapse =</span> <span class="st">&quot;-&quot;</span>), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Trials per participant: 200 </code></pre>
 </div>
 </div>
 <p>This is what the raw trial-level data looks like – one row per trial, for the columns we actually need:</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>bandit_raw_t1 <span class="sc">|&gt;</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>) <span class="sc">|&gt;</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="at">caption =</span> <span class="st">&quot;First 10 rows of the raw time 1 data&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>bandit_raw_t1 <span class="sc">|&gt;</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>) <span class="sc">|&gt;</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="at">caption =</span> <span class="st">&quot;First 10 rows of the raw time 1 data&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
 <caption>First 10 rows of the raw time 1 data</caption>
@@ -2625,22 +2692,22 @@ Note
 <p>A full description of the model equations and the Stan code itself is in the <a href="applied_example_pike/02_02_pike_2026_bandit.html#appendix-the-stan-model">appendix of the full applied example</a>; we won’t repeat it here.</p>
 <p>A quick visualisation of the raw data, for a couple of participants, showing which arm was chosen on each trial and whether it paid out a reward or punishment:</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>bandit_raw_t1 <span class="sc">|&gt;</span></span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(id <span class="sc">%in%</span> ids_retest_sample[<span class="dv">1</span><span class="sc">:</span><span class="dv">2</span>]) <span class="sc">|&gt;</span></span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">outcome =</span> <span class="fu">case_when</span>(</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    is_gain <span class="sc">==</span> <span class="dv">1</span> <span class="sc">~</span> <span class="st">&quot;Reward&quot;</span>,</span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    is_loss <span class="sc">==</span> <span class="dv">1</span> <span class="sc">~</span> <span class="st">&quot;Punishment&quot;</span>,</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    <span class="cn">TRUE</span>         <span class="sc">~</span> <span class="st">&quot;Neither&quot;</span></span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>  )) <span class="sc">|&gt;</span></span>
-<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> trial_nr, <span class="at">y =</span> <span class="fu">factor</span>(response), <span class="at">color =</span> outcome)) <span class="sc">+</span></span>
-<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="at">size =</span> <span class="fl">1.5</span>) <span class="sc">+</span></span>
-<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>id, <span class="at">ncol =</span> <span class="dv">1</span>, <span class="at">labeller =</span> label_both) <span class="sc">+</span></span>
-<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">&quot;Reward&quot;</span> <span class="ot">=</span> <span class="st">&quot;forestgreen&quot;</span>, <span class="st">&quot;Punishment&quot;</span> <span class="ot">=</span> <span class="st">&quot;firebrick&quot;</span>, <span class="st">&quot;Neither&quot;</span> <span class="ot">=</span> <span class="st">&quot;grey70&quot;</span>)) <span class="sc">+</span></span>
-<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
-<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">&quot;Chosen arm and outcome across trials, 2 example participants&quot;</span>,</span>
-<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> <span class="st">&quot;Trial&quot;</span>, <span class="at">y =</span> <span class="st">&quot;Arm chosen&quot;</span>, <span class="at">color =</span> <span class="st">&quot;Outcome&quot;</span></span>
-<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">+</span></span>
-<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a>bandit_raw_t1 <span class="sc">|&gt;</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">filter</span>(id <span class="sc">%in%</span> ids_retest_sample[<span class="dv">1</span><span class="sc">:</span><span class="dv">2</span>]) <span class="sc">|&gt;</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">outcome =</span> <span class="fu">case_when</span>(</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    is_gain <span class="sc">==</span> <span class="dv">1</span> <span class="sc">~</span> <span class="st">&quot;Reward&quot;</span>,</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    is_loss <span class="sc">==</span> <span class="dv">1</span> <span class="sc">~</span> <span class="st">&quot;Punishment&quot;</span>,</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    <span class="cn">TRUE</span>         <span class="sc">~</span> <span class="st">&quot;Neither&quot;</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>  )) <span class="sc">|&gt;</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> trial_nr, <span class="at">y =</span> <span class="fu">factor</span>(response), <span class="at">color =</span> outcome)) <span class="sc">+</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="at">size =</span> <span class="fl">1.5</span>) <span class="sc">+</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">facet_wrap</span>(<span class="sc">~</span>id, <span class="at">ncol =</span> <span class="dv">1</span>, <span class="at">labeller =</span> label_both) <span class="sc">+</span></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_color_manual</span>(<span class="at">values =</span> <span class="fu">c</span>(<span class="st">&quot;Reward&quot;</span> <span class="ot">=</span> <span class="st">&quot;forestgreen&quot;</span>, <span class="st">&quot;Punishment&quot;</span> <span class="ot">=</span> <span class="st">&quot;firebrick&quot;</span>, <span class="st">&quot;Neither&quot;</span> <span class="ot">=</span> <span class="st">&quot;grey70&quot;</span>)) <span class="sc">+</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">&quot;Chosen arm and outcome across trials, 2 example participants&quot;</span>,</span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> <span class="st">&quot;Trial&quot;</span>, <span class="at">y =</span> <span class="st">&quot;Arm chosen&quot;</span>, <span class="at">color =</span> <span class="st">&quot;Outcome&quot;</span></span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">+</span></span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
@@ -2654,16 +2721,16 @@ Note
 <h2 class="anchored" data-anchor-id="prepare-data-for-hbayesdm">Prepare Data for hBayesDM</h2>
 <p><code>hBayesDM::bandit4arm_4par()</code> expects one row per trial, with columns <code>subjID</code>/<code>choice</code>/<code>gain</code>/<code>loss</code>, in contrast to the <code>id</code>/<code>trial_nr</code>/<code>is_gain</code>/<code>is_loss</code>/<code>response</code> columns in the raw data above. It has no <code>trial_nr</code> column of its own – it infers each participant’s trial sequence purely from row order – so we arrange by participant and trial number, then rename the columns it needs:</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb12"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a>bandit_df <span class="ot">=</span> bandit_raw_t1 <span class="sc">|&gt;</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(id, trial_nr) <span class="sc">|&gt;</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(id, trial_nr) <span class="sc">|&gt;</span></span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">slice_tail</span>(<span class="at">n =</span> <span class="dv">1</span>) <span class="sc">|&gt;</span>  <span class="co"># keep the last recorded row for any repeated trial number (affects a handful of trials for one participant)</span></span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">|&gt;</span></span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">transmute</span>(<span class="at">subjID =</span> id, <span class="at">choice =</span> response, <span class="at">gain =</span> is_gain, <span class="at">loss =</span> is_loss)</span>
-<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>bandit_df <span class="sc">|&gt;</span></span>
-<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>) <span class="sc">|&gt;</span></span>
-<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="at">caption =</span> <span class="st">&quot;First 10 rows, hBayesDM-ready data&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>bandit_df <span class="ot">=</span> bandit_raw_t1 <span class="sc">|&gt;</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">arrange</span>(id, trial_nr) <span class="sc">|&gt;</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(id, trial_nr) <span class="sc">|&gt;</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">slice_tail</span>(<span class="at">n =</span> <span class="dv">1</span>) <span class="sc">|&gt;</span>  <span class="co"># keep the last recorded row for any repeated trial number (affects a handful of trials for one participant)</span></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ungroup</span>() <span class="sc">|&gt;</span></span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">transmute</span>(<span class="at">subjID =</span> id, <span class="at">choice =</span> response, <span class="at">gain =</span> is_gain, <span class="at">loss =</span> is_loss)</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>bandit_df <span class="sc">|&gt;</span></span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">slice</span>(<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>) <span class="sc">|&gt;</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>  knitr<span class="sc">::</span><span class="fu">kable</span>(<span class="at">caption =</span> <span class="st">&quot;First 10 rows, hBayesDM-ready data&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <table class="caption-top table table-sm table-striped small">
 <caption>First 10 rows, hBayesDM-ready data</caption>
@@ -2747,31 +2814,31 @@ Note
 <p>We now fit <code>bandit4arm_4par()</code> to all 115 participants at once – it’s a <em>hierarchical</em> model, so every participant’s <code>Arew</code>/<code>Apun</code>/<code>R</code>/<code>P</code> estimate borrows statistical information from the group.</p>
 <p>We use <code>niter = 3000</code> (<code>nwarmup = 1000</code> of which are warmup, leaving 2,000 post-warmup draws per chain), <code>nchain = 4</code>, <code>ncore = 4</code>, and <code>adapt_delta = 0.95</code>. This is a hard to sample model – expect this chunk to take several hours. In <code>applied_example_pike/</code> we used even more conservative settings (<code>niter = 8000</code>, <code>nwarmup = 3000</code>, <code>adapt_delta = 0.975</code>) and inspect the diagnostics in more detail.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>fit_bandit <span class="ot">=</span> <span class="fu">bandit4arm_4par</span>(</span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">data        =</span> bandit_df,</span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">niter       =</span> <span class="dv">3000</span>,</span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">nwarmup     =</span> <span class="dv">1000</span>,</span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">nchain      =</span> <span class="dv">4</span>,</span>
-<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">ncore       =</span> <span class="dv">4</span>,</span>
-<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">adapt_delta =</span> <span class="fl">0.95</span>,</span>
-<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">seed        =</span> <span class="dv">1</span></span>
-<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a><span class="co"># cmdstanr fit objects lazily read draws/diagnostics from CSV files on disk the first time</span></span>
-<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a><span class="co"># they&#39;re requested. Since we&#39;re relying on knitr&#39;s cache to persist `fit_bandit` across</span></span>
-<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a><span class="co"># separate renders (i.e. separate R sessions, possibly after those CSV files no longer exist),</span></span>
-<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a><span class="co"># we force everything to be read into memory now -- the same thing cmdstanr&#39;s own</span></span>
-<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a><span class="co"># fit$save_object() does before writing a fit to disk.</span></span>
-<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a><span class="fu">invisible</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>())</span>
-<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a><span class="fu">try</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">sampler_diagnostics</span>(), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>fit_bandit <span class="ot">=</span> <span class="fu">bandit4arm_4par</span>(</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">data        =</span> bandit_df,</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">niter       =</span> <span class="dv">3000</span>,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">nwarmup     =</span> <span class="dv">1000</span>,</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">nchain      =</span> <span class="dv">4</span>,</span>
+<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">ncore       =</span> <span class="dv">4</span>,</span>
+<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">adapt_delta =</span> <span class="fl">0.95</span>,</span>
+<span id="cb16-8"><a href="#cb16-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">seed        =</span> <span class="dv">1</span></span>
+<span id="cb16-9"><a href="#cb16-9" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb16-10"><a href="#cb16-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb16-11"><a href="#cb16-11" aria-hidden="true" tabindex="-1"></a><span class="co"># cmdstanr fit objects lazily read draws/diagnostics from CSV files on disk the first time</span></span>
+<span id="cb16-12"><a href="#cb16-12" aria-hidden="true" tabindex="-1"></a><span class="co"># they&#39;re requested. Since we&#39;re relying on knitr&#39;s cache to persist `fit_bandit` across</span></span>
+<span id="cb16-13"><a href="#cb16-13" aria-hidden="true" tabindex="-1"></a><span class="co"># separate renders (i.e. separate R sessions, possibly after those CSV files no longer exist),</span></span>
+<span id="cb16-14"><a href="#cb16-14" aria-hidden="true" tabindex="-1"></a><span class="co"># we force everything to be read into memory now -- the same thing cmdstanr&#39;s own</span></span>
+<span id="cb16-15"><a href="#cb16-15" aria-hidden="true" tabindex="-1"></a><span class="co"># fit$save_object() does before writing a fit to disk.</span></span>
+<span id="cb16-16"><a href="#cb16-16" aria-hidden="true" tabindex="-1"></a><span class="fu">invisible</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>())</span>
+<span id="cb16-17"><a href="#cb16-17" aria-hidden="true" tabindex="-1"></a><span class="fu">try</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">sampler_diagnostics</span>(), <span class="at">silent =</span> <span class="cn">TRUE</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 <p><code>fit_bandit</code> is an object of class <code>hBayesDM</code>, which bundles together several things we’ll need below:</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">class</span>(fit_bandit)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">class</span>(fit_bandit)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] &quot;hBayesDM&quot;</code></pre>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">names</span>(fit_bandit)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="fu">names</span>(fit_bandit)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1] &quot;model&quot;        &quot;all_ind_pars&quot; &quot;par_vals&quot;     &quot;fit&quot;          &quot;raw_data&quot;    </code></pre>
 </div>
@@ -2785,31 +2852,31 @@ Note
 <h2 class="anchored" data-anchor-id="a-quick-convergence-check">A quick convergence check</h2>
 <p>Before trusting any reliability estimates from this fit, we check for divergent transitions and look at Rhat/ESS for the group-level (<code>mu_pr</code>, <code>sigma</code>) and individual-level (<code>Arew</code>, <code>Apun</code>, <code>R</code>, <code>P</code>) parameters. Conventional thresholds are no divergent transitions, Rhat &lt; 1.01, and ESS &gt; 400:</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a>d <span class="ot">=</span> fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">diagnostic_summary</span>()</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Divergent transitions:&quot;</span>, <span class="fu">sum</span>(d<span class="sc">$</span>num_divergent), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a>d <span class="ot">=</span> fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">diagnostic_summary</span>()</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Divergent transitions:&quot;</span>, <span class="fu">sum</span>(d<span class="sc">$</span>num_divergent), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Divergent transitions: 0 </code></pre>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Max treedepth hits:   &quot;</span>, <span class="fu">sum</span>(d<span class="sc">$</span>num_max_treedepth), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Max treedepth hits:   &quot;</span>, <span class="fu">sum</span>(d<span class="sc">$</span>num_max_treedepth), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Max treedepth hits:    0 </code></pre>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Min E-BFMI:           &quot;</span>, <span class="fu">round</span>(<span class="fu">min</span>(d<span class="sc">$</span>ebfmi), <span class="dv">3</span>), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Min E-BFMI:           &quot;</span>, <span class="fu">round</span>(<span class="fu">min</span>(d<span class="sc">$</span>ebfmi), <span class="dv">3</span>), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Min E-BFMI:            0.664 </code></pre>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a>fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">summary</span>(<span class="at">variables =</span> <span class="fu">c</span>(<span class="st">&quot;mu_pr&quot;</span>, <span class="st">&quot;sigma&quot;</span>, <span class="st">&quot;Arew&quot;</span>, <span class="st">&quot;Apun&quot;</span>, <span class="st">&quot;R&quot;</span>, <span class="st">&quot;P&quot;</span>)) <span class="sc">|&gt;</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">parameter =</span> <span class="fu">str_extract</span>(variable, <span class="st">&quot;^[^</span><span class="sc">\\</span><span class="st">[]+&quot;</span>)) <span class="sc">|&gt;</span></span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(parameter) <span class="sc">|&gt;</span></span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(</span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">max_rhat     =</span> <span class="fu">max</span>(rhat, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">min_ess_bulk =</span> <span class="fu">min</span>(ess_bulk, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">min_ess_tail =</span> <span class="fu">min</span>(ess_tail, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
-<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
-<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
-<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
-<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> max_rhat, <span class="at">decimals =</span> <span class="dv">3</span>) <span class="sc">|&gt;</span></span>
-<span id="cb24-12"><a href="#cb24-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> <span class="fu">c</span>(min_ess_bulk, min_ess_tail), <span class="at">decimals =</span> <span class="dv">0</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">summary</span>(<span class="at">variables =</span> <span class="fu">c</span>(<span class="st">&quot;mu_pr&quot;</span>, <span class="st">&quot;sigma&quot;</span>, <span class="st">&quot;Arew&quot;</span>, <span class="st">&quot;Apun&quot;</span>, <span class="st">&quot;R&quot;</span>, <span class="st">&quot;P&quot;</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">parameter =</span> <span class="fu">str_extract</span>(variable, <span class="st">&quot;^[^</span><span class="sc">\\</span><span class="st">[]+&quot;</span>)) <span class="sc">|&gt;</span></span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">group_by</span>(parameter) <span class="sc">|&gt;</span></span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">summarise</span>(</span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">max_rhat     =</span> <span class="fu">max</span>(rhat, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">min_ess_bulk =</span> <span class="fu">min</span>(ess_bulk, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>    <span class="at">min_ess_tail =</span> <span class="fu">min</span>(ess_tail, <span class="at">na.rm =</span> <span class="cn">TRUE</span>),</span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>    <span class="at">.groups =</span> <span class="st">&quot;drop&quot;</span></span>
+<span id="cb27-9"><a href="#cb27-9" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">|&gt;</span></span>
+<span id="cb27-10"><a href="#cb27-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
+<span id="cb27-11"><a href="#cb27-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> max_rhat, <span class="at">decimals =</span> <span class="dv">3</span>) <span class="sc">|&gt;</span></span>
+<span id="cb27-12"><a href="#cb27-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> <span class="fu">c</span>(min_ess_bulk, min_ess_tail), <span class="at">decimals =</span> <span class="dv">0</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div id="wknrsauujv" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>#wknrsauujv table {
@@ -3268,21 +3335,21 @@ height: 0px !important;
 <p>RMU reliability only needs the posterior draws for each participant’s parameter, from a single model fit – there’s no need for retest data or split-half models. RMU is described in the <a href="tutorial_calculating_rmu_gonogo.html#rmu">go/no-go tutorial</a> and in the <a href="https://osf.io/preprints/psyarxiv/h54k8_v1">pre-print</a>.</p>
 <section id="manually-pulling-a-matrix-of-posterior-draws" class="level2">
 <h2 class="anchored" data-anchor-id="manually-pulling-a-matrix-of-posterior-draws">Manually: pulling a matrix of posterior draws</h2>
-<p><code>reliability()</code>’s default method just needs a matrix with one row per participant and one column per posterior draw. We can pull this straight out of the <code>cmdstanr</code> fit object, for a single parameter (here, <code>Arew</code>, the reward learning rate).</p>
-<p><code>reliability()</code> calculates RMU by randomly splitting each participant’s posterior draws into two halves and correlating them, repeated many times to build up a posterior distribution for reliability itself (see the <a href="tutorial_calculating_rmu_gonogo.html#rmu">go/no-go tutorial</a> for the full mechanics). Because we only have a finite number of posterior draws to split, <em>which</em> random split we happen to get will nudge the resulting point estimate and HDCI slightly – rerunning <code>reliability()</code> on the exact same draws will give you a very similar, but not identical, answer each time. We set a seed before each call below so the results are reproducible, and so that the manual and automatic approaches (which use the same draws, in the same parameter order) give identical estimates rather than just very similar ones.</p>
+<p><code>rmu()</code>’s default method just needs a matrix with one row per participant and one column per posterior draw. We can pull this straight out of the <code>cmdstanr</code> fit object, for a single parameter (here, <code>Arew</code>, the reward learning rate).</p>
+<p><code>rmu()</code> calculates RMU by randomly splitting each participant’s posterior draws into two halves and correlating them, repeated many times to build up a posterior distribution for reliability itself (see the <a href="tutorial_calculating_rmu_gonogo.html#rmu">go/no-go tutorial</a> for the full mechanics). Because we only have a finite number of posterior draws to split, <em>which</em> random split we happen to get will nudge the resulting point estimate and HDCI slightly – rerunning <code>rmu()</code> on the exact same draws will give you a very similar, but not identical, answer each time. We set a seed before each call below so the results are reproducible, and so that the manual and automatic approaches (which use the same draws, in the same parameter order) give identical estimates rather than just very similar ones.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
-<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>Arew_draws <span class="ot">=</span> fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> <span class="st">&quot;Arew&quot;</span>, <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>) <span class="sc">|&gt;</span>  <span class="co"># draws x participants</span></span>
-<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">t</span>()  <span class="co"># transpose so participants are on rows, draws are on columns</span></span>
-<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a><span class="fu">dim</span>(Arew_draws)  <span class="co"># 115 participants x 4000 posterior draws (4 chains x 1000 post-warmup draws)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>Arew_draws <span class="ot">=</span> fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> <span class="st">&quot;Arew&quot;</span>, <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>) <span class="sc">|&gt;</span>  <span class="co"># draws x participants</span></span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">t</span>()  <span class="co"># transpose so participants are on rows, draws are on columns</span></span>
+<span id="cb28-5"><a href="#cb28-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb28-6"><a href="#cb28-6" aria-hidden="true" tabindex="-1"></a><span class="fu">dim</span>(Arew_draws)  <span class="co"># 115 participants x 4000 posterior draws (4 chains x 1000 post-warmup draws)</span></span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>[1]  115 8000</code></pre>
 </div>
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>rel_Arew_manual <span class="ot">=</span> <span class="fu">reliability</span>(Arew_draws)</span>
-<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(rel_Arew_manual)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>rel_Arew_manual <span class="ot">=</span> <span class="fu">rmu</span>(Arew_draws)</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(rel_Arew_manual)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Reliability (Relative Measurement Uncertainty)
   Number of subjects:              115
@@ -3298,24 +3365,24 @@ Access full results with $hdci and $reliability_posterior_draws</code></pre>
 </div>
 <p>We can repeat this for each of the 4 individual-level parameters in the model:</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a>subj_pars <span class="ot">=</span> <span class="fu">c</span>(<span class="st">&quot;Arew&quot;</span>, <span class="st">&quot;Apun&quot;</span>, <span class="st">&quot;R&quot;</span>, <span class="st">&quot;P&quot;</span>)</span>
-<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
-<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a>rel_manual <span class="ot">=</span> <span class="fu">map_dfr</span>(subj_pars, <span class="cf">function</span>(par){</span>
-<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>  draws <span class="ot">=</span> fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> par, <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>) <span class="sc">|&gt;</span> <span class="fu">t</span>()</span>
-<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a>  rel   <span class="ot">=</span> <span class="fu">reliability</span>(draws)</span>
-<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tibble</span>(</span>
-<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">parameter =</span> par,</span>
-<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">rmu       =</span> rel<span class="sc">$</span>hdci<span class="sc">$</span>rmu_estimate,</span>
-<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">lower     =</span> rel<span class="sc">$</span>hdci<span class="sc">$</span>hdci_lowerbound,</span>
-<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">upper     =</span> rel<span class="sc">$</span>hdci<span class="sc">$</span>hdci_upperbound</span>
-<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a>  )</span>
-<span id="cb29-14"><a href="#cb29-14" aria-hidden="true" tabindex="-1"></a>})</span>
-<span id="cb29-15"><a href="#cb29-15" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb29-16"><a href="#cb29-16" aria-hidden="true" tabindex="-1"></a>rel_manual <span class="sc">|&gt;</span></span>
-<span id="cb29-17"><a href="#cb29-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
-<span id="cb29-18"><a href="#cb29-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> <span class="fu">c</span>(rmu, lower, upper), <span class="at">decimals =</span> <span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>subj_pars <span class="ot">=</span> <span class="fu">c</span>(<span class="st">&quot;Arew&quot;</span>, <span class="st">&quot;Apun&quot;</span>, <span class="st">&quot;R&quot;</span>, <span class="st">&quot;P&quot;</span>)</span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>rel_manual <span class="ot">=</span> <span class="fu">map_dfr</span>(subj_pars, <span class="cf">function</span>(par){</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>  draws <span class="ot">=</span> fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> par, <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>) <span class="sc">|&gt;</span> <span class="fu">t</span>()</span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>  rel   <span class="ot">=</span> <span class="fu">rmu</span>(draws)</span>
+<span id="cb32-8"><a href="#cb32-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tibble</span>(</span>
+<span id="cb32-9"><a href="#cb32-9" aria-hidden="true" tabindex="-1"></a>    <span class="at">parameter =</span> par,</span>
+<span id="cb32-10"><a href="#cb32-10" aria-hidden="true" tabindex="-1"></a>    <span class="at">rmu       =</span> rel<span class="sc">$</span>hdci<span class="sc">$</span>rmu_estimate,</span>
+<span id="cb32-11"><a href="#cb32-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">lower     =</span> rel<span class="sc">$</span>hdci<span class="sc">$</span>hdci_lowerbound,</span>
+<span id="cb32-12"><a href="#cb32-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">upper     =</span> rel<span class="sc">$</span>hdci<span class="sc">$</span>hdci_upperbound</span>
+<span id="cb32-13"><a href="#cb32-13" aria-hidden="true" tabindex="-1"></a>  )</span>
+<span id="cb32-14"><a href="#cb32-14" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb32-15"><a href="#cb32-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb32-16"><a href="#cb32-16" aria-hidden="true" tabindex="-1"></a>rel_manual <span class="sc">|&gt;</span></span>
+<span id="cb32-17"><a href="#cb32-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
+<span id="cb32-18"><a href="#cb32-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> <span class="fu">c</span>(rmu, lower, upper), <span class="at">decimals =</span> <span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div id="sdofjgqnme" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>#sdofjgqnme table {
@@ -3757,11 +3824,11 @@ height: 0px !important;
 </section>
 <section id="automatically-passing-the-fitted-hbayesdm-model-directly" class="level2">
 <h2 class="anchored" data-anchor-id="automatically-passing-the-fitted-hbayesdm-model-directly">Automatically: passing the fitted hBayesDM model directly</h2>
-<p><code>gbtoolbox::reliability()</code> is a generic function – if you pass it an object of class <code>hBayesDM</code> (rather than a plain matrix), it dispatches to <code>reliability.hBayesDM()</code>, which pulls out the posterior draws for you and calculates RMU reliability for every individual-level parameter in the model automatically (by default; you can also pass <code>parameter = c(&quot;Arew&quot;, &quot;R&quot;)</code> etc. to only calculate reliability for specific parameters).</p>
+<p><code>gbtoolbox::rmu()</code> is a generic function – if you pass it an object of class <code>hBayesDM</code> (rather than a plain matrix), it dispatches to <code>rmu.hBayesDM()</code>, which pulls out the posterior draws for you and calculates RMU reliability for every individual-level parameter in the model automatically (by default; you can also pass <code>parameter = c(&quot;Arew&quot;, &quot;R&quot;)</code> etc. to only calculate reliability for specific parameters). The same works for models fit with <code>brms</code> (objects of class <code>brmsfit</code>) – see the <a href="tutorial_calculating_rmu_gonogo.html#passing-the-fitted-brms-model-directly">go/no-go tutorial</a> for an example.</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
-<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>rel_auto <span class="ot">=</span> <span class="fu">reliability</span>(fit_bandit, <span class="at">parameter =</span> subj_pars)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb33"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
+<span id="cb33-2"><a href="#cb33-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb33-3"><a href="#cb33-3" aria-hidden="true" tabindex="-1"></a>rel_auto <span class="ot">=</span> <span class="fu">rmu</span>(fit_bandit, <span class="at">parameter =</span> subj_pars)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>
 Reliability (Relative Measurement Uncertainty) Estimates
@@ -3779,7 +3846,7 @@ P           0.856           0.781           0.922</code></pre>
 </div>
 <p>This prints a summary table directly, and also returns a named list (one element per parameter, each with the same <code>$hdci</code>/<code>$reliability_posterior_draws</code> structure as the manual approach above):</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a>rel_auto<span class="sc">$</span>Arew<span class="sc">$</span>hdci</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>rel_auto<span class="sc">$</span>Arew<span class="sc">$</span>hdci</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>  rmu_estimate hdci_lowerbound hdci_upperbound .width .point .interval
 1    0.8535059       0.7796418       0.9205787   0.95   mean      hdci</code></pre>
@@ -3803,64 +3870,64 @@ P_i = 30 \cdot \Phi(\mu_4 + \sigma_4 z^{P}_i)
 <h2 class="anchored" data-anchor-id="scaling-the-posterior-draws">Scaling the posterior draws</h2>
 <p>We pull each parameter’s draws out as its own participants x draws matrix, then transform each one by hand. Writing this out one parameter at a time, rather than wrapping it in a helper function, makes it easy to see exactly what happens to each parameter:</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb34"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a>eps <span class="ot">=</span> <span class="fl">1e-6</span>  <span class="co"># a handful of draws hit exactly 0 or 1 (Phi_approx saturation) -&gt; qnorm(0/1) = +-Inf</span></span>
-<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a><span class="co"># native scale: participants x draws matrices, straight off the fitted model</span></span>
-<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>draws_Arew <span class="ot">=</span> <span class="fu">unclass</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> <span class="st">&quot;Arew&quot;</span>, <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>)) <span class="sc">|&gt;</span> <span class="fu">t</span>()</span>
-<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>draws_Apun <span class="ot">=</span> <span class="fu">unclass</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> <span class="st">&quot;Apun&quot;</span>, <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>)) <span class="sc">|&gt;</span> <span class="fu">t</span>()</span>
-<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>draws_R    <span class="ot">=</span> <span class="fu">unclass</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> <span class="st">&quot;R&quot;</span>,    <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>)) <span class="sc">|&gt;</span> <span class="fu">t</span>()</span>
-<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>draws_P    <span class="ot">=</span> <span class="fu">unclass</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> <span class="st">&quot;P&quot;</span>,    <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>)) <span class="sc">|&gt;</span> <span class="fu">t</span>()</span>
-<span id="cb34-8"><a href="#cb34-8" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb34-9"><a href="#cb34-9" aria-hidden="true" tabindex="-1"></a><span class="co"># probit (z) scale: invert Phi() by hand for each parameter</span></span>
-<span id="cb34-10"><a href="#cb34-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Arew, Apun are already on (0, 1); R, P need dividing by 30 first</span></span>
-<span id="cb34-11"><a href="#cb34-11" aria-hidden="true" tabindex="-1"></a>draws_Arew_z <span class="ot">=</span> <span class="fu">qnorm</span>(<span class="fu">pmin</span>(<span class="fu">pmax</span>(draws_Arew,      eps), <span class="dv">1</span> <span class="sc">-</span> eps))</span>
-<span id="cb34-12"><a href="#cb34-12" aria-hidden="true" tabindex="-1"></a>draws_Apun_z <span class="ot">=</span> <span class="fu">qnorm</span>(<span class="fu">pmin</span>(<span class="fu">pmax</span>(draws_Apun,      eps), <span class="dv">1</span> <span class="sc">-</span> eps))</span>
-<span id="cb34-13"><a href="#cb34-13" aria-hidden="true" tabindex="-1"></a>draws_R_z    <span class="ot">=</span> <span class="fu">qnorm</span>(<span class="fu">pmin</span>(<span class="fu">pmax</span>(draws_R <span class="sc">/</span> <span class="dv">30</span>,    eps), <span class="dv">1</span> <span class="sc">-</span> eps))</span>
-<span id="cb34-14"><a href="#cb34-14" aria-hidden="true" tabindex="-1"></a>draws_P_z    <span class="ot">=</span> <span class="fu">qnorm</span>(<span class="fu">pmin</span>(<span class="fu">pmax</span>(draws_P <span class="sc">/</span> <span class="dv">30</span>,    eps), <span class="dv">1</span> <span class="sc">-</span> eps))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a>eps <span class="ot">=</span> <span class="fl">1e-6</span>  <span class="co"># a handful of draws hit exactly 0 or 1 (Phi_approx saturation) -&gt; qnorm(0/1) = +-Inf</span></span>
+<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a><span class="co"># native scale: participants x draws matrices, straight off the fitted model</span></span>
+<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>draws_Arew <span class="ot">=</span> <span class="fu">unclass</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> <span class="st">&quot;Arew&quot;</span>, <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>)) <span class="sc">|&gt;</span> <span class="fu">t</span>()</span>
+<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>draws_Apun <span class="ot">=</span> <span class="fu">unclass</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> <span class="st">&quot;Apun&quot;</span>, <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>)) <span class="sc">|&gt;</span> <span class="fu">t</span>()</span>
+<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>draws_R    <span class="ot">=</span> <span class="fu">unclass</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> <span class="st">&quot;R&quot;</span>,    <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>)) <span class="sc">|&gt;</span> <span class="fu">t</span>()</span>
+<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a>draws_P    <span class="ot">=</span> <span class="fu">unclass</span>(fit_bandit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">draws</span>(<span class="at">variables =</span> <span class="st">&quot;P&quot;</span>,    <span class="at">format =</span> <span class="st">&quot;matrix&quot;</span>)) <span class="sc">|&gt;</span> <span class="fu">t</span>()</span>
+<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a><span class="co"># probit (z) scale: invert Phi() by hand for each parameter</span></span>
+<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Arew, Apun are already on (0, 1); R, P need dividing by 30 first</span></span>
+<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>draws_Arew_z <span class="ot">=</span> <span class="fu">qnorm</span>(<span class="fu">pmin</span>(<span class="fu">pmax</span>(draws_Arew,      eps), <span class="dv">1</span> <span class="sc">-</span> eps))</span>
+<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>draws_Apun_z <span class="ot">=</span> <span class="fu">qnorm</span>(<span class="fu">pmin</span>(<span class="fu">pmax</span>(draws_Apun,      eps), <span class="dv">1</span> <span class="sc">-</span> eps))</span>
+<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a>draws_R_z    <span class="ot">=</span> <span class="fu">qnorm</span>(<span class="fu">pmin</span>(<span class="fu">pmax</span>(draws_R <span class="sc">/</span> <span class="dv">30</span>,    eps), <span class="dv">1</span> <span class="sc">-</span> eps))</span>
+<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a>draws_P_z    <span class="ot">=</span> <span class="fu">qnorm</span>(<span class="fu">pmin</span>(<span class="fu">pmax</span>(draws_P <span class="sc">/</span> <span class="dv">30</span>,    eps), <span class="dv">1</span> <span class="sc">-</span> eps))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 </div>
 </section>
 <section id="posterior-densities-native-vs.-probit-transformed-scale" class="level2">
 <h2 class="anchored" data-anchor-id="posterior-densities-native-vs.-probit-transformed-scale">Posterior densities: native vs. probit-transformed scale</h2>
 <p>To see what this transform does, we plot per-participant posterior densities before and after, for a subset of participants. <code>matrix_to_long()</code> below is purely for reshaping a matrix into the long format <code>ggplot()</code> wants – it doesn’t do any rescaling itself:</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb35"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a>ids      <span class="ot">=</span> fit_bandit<span class="sc">$</span>all_ind_pars<span class="sc">$</span>subjID</span>
-<span id="cb35-2"><a href="#cb35-2" aria-hidden="true" tabindex="-1"></a>plot_ids <span class="ot">=</span> ids[<span class="dv">1</span><span class="sc">:</span><span class="dv">30</span>]  <span class="co"># a subset, for a readable plot</span></span>
-<span id="cb35-3"><a href="#cb35-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb35-4"><a href="#cb35-4" aria-hidden="true" tabindex="-1"></a>matrix_to_long <span class="ot">=</span> <span class="cf">function</span>(m, parameter_name) {</span>
-<span id="cb35-5"><a href="#cb35-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rownames</span>(m) <span class="ot">=</span> <span class="fu">as.character</span>(ids)  <span class="co"># as.character() so we subset rows by id below, not by row position</span></span>
-<span id="cb35-6"><a href="#cb35-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">colnames</span>(m) <span class="ot">=</span> <span class="fu">paste0</span>(<span class="st">&quot;draw&quot;</span>, <span class="fu">seq_len</span>(<span class="fu">ncol</span>(m)))</span>
-<span id="cb35-7"><a href="#cb35-7" aria-hidden="true" tabindex="-1"></a>  m[<span class="fu">as.character</span>(plot_ids), , drop <span class="ot">=</span> <span class="cn">FALSE</span>] <span class="sc">|&gt;</span></span>
-<span id="cb35-8"><a href="#cb35-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">as_tibble</span>(<span class="at">rownames =</span> <span class="st">&quot;id&quot;</span>) <span class="sc">|&gt;</span></span>
-<span id="cb35-9"><a href="#cb35-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">pivot_longer</span>(<span class="sc">-</span>id, <span class="at">names_to =</span> <span class="st">&quot;draw&quot;</span>, <span class="at">values_to =</span> <span class="st">&quot;value&quot;</span>) <span class="sc">|&gt;</span></span>
-<span id="cb35-10"><a href="#cb35-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">parameter =</span> parameter_name)</span>
-<span id="cb35-11"><a href="#cb35-11" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb35-12"><a href="#cb35-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb35-13"><a href="#cb35-13" aria-hidden="true" tabindex="-1"></a>draws_native_long <span class="ot">=</span> <span class="fu">bind_rows</span>(</span>
-<span id="cb35-14"><a href="#cb35-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_Arew, <span class="st">&quot;Arew&quot;</span>),</span>
-<span id="cb35-15"><a href="#cb35-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_Apun, <span class="st">&quot;Apun&quot;</span>),</span>
-<span id="cb35-16"><a href="#cb35-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_R,    <span class="st">&quot;R&quot;</span>),</span>
-<span id="cb35-17"><a href="#cb35-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_P,    <span class="st">&quot;P&quot;</span>)</span>
-<span id="cb35-18"><a href="#cb35-18" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
-<span id="cb35-19"><a href="#cb35-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">parameter =</span> <span class="fu">factor</span>(parameter, <span class="at">levels =</span> subj_pars))</span>
-<span id="cb35-20"><a href="#cb35-20" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb35-21"><a href="#cb35-21" aria-hidden="true" tabindex="-1"></a>draws_probit_long <span class="ot">=</span> <span class="fu">bind_rows</span>(</span>
-<span id="cb35-22"><a href="#cb35-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_Arew_z, <span class="st">&quot;Arew&quot;</span>),</span>
-<span id="cb35-23"><a href="#cb35-23" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_Apun_z, <span class="st">&quot;Apun&quot;</span>),</span>
-<span id="cb35-24"><a href="#cb35-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_R_z,    <span class="st">&quot;R&quot;</span>),</span>
-<span id="cb35-25"><a href="#cb35-25" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_P_z,    <span class="st">&quot;P&quot;</span>)</span>
-<span id="cb35-26"><a href="#cb35-26" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
-<span id="cb35-27"><a href="#cb35-27" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">parameter =</span> <span class="fu">factor</span>(parameter, <span class="at">levels =</span> subj_pars))</span>
-<span id="cb35-28"><a href="#cb35-28" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb35-29"><a href="#cb35-29" aria-hidden="true" tabindex="-1"></a>plot_subject_densities <span class="ot">=</span> <span class="cf">function</span>(draws_long, title, color) {</span>
-<span id="cb35-30"><a href="#cb35-30" aria-hidden="true" tabindex="-1"></a>  draws_long <span class="sc">|&gt;</span></span>
-<span id="cb35-31"><a href="#cb35-31" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> value, <span class="at">group =</span> id)) <span class="sc">+</span></span>
-<span id="cb35-32"><a href="#cb35-32" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_density</span>(<span class="at">alpha =</span> <span class="fl">0.1</span>, <span class="at">linewidth =</span> <span class="fl">0.3</span>, <span class="at">color =</span> color) <span class="sc">+</span></span>
-<span id="cb35-33"><a href="#cb35-33" aria-hidden="true" tabindex="-1"></a>    <span class="fu">facet_wrap</span>(<span class="sc">~</span>parameter, <span class="at">scales =</span> <span class="st">&quot;free&quot;</span>, <span class="at">nrow =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
-<span id="cb35-34"><a href="#cb35-34" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">title =</span> title, <span class="at">x =</span> <span class="cn">NULL</span>, <span class="at">y =</span> <span class="st">&quot;Density&quot;</span>) <span class="sc">+</span></span>
-<span id="cb35-35"><a href="#cb35-35" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_bw</span>()</span>
-<span id="cb35-36"><a href="#cb35-36" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb35-37"><a href="#cb35-37" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb35-38"><a href="#cb35-38" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_subject_densities</span>(draws_native_long, <span class="st">&quot;Native scale -- Arew/Apun in [0,1], R/P in [0,30]&quot;</span>, <span class="st">&quot;steelblue&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>ids      <span class="ot">=</span> fit_bandit<span class="sc">$</span>all_ind_pars<span class="sc">$</span>subjID</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>plot_ids <span class="ot">=</span> ids[<span class="dv">1</span><span class="sc">:</span><span class="dv">30</span>]  <span class="co"># a subset, for a readable plot</span></span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>matrix_to_long <span class="ot">=</span> <span class="cf">function</span>(m, parameter_name) {</span>
+<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rownames</span>(m) <span class="ot">=</span> <span class="fu">as.character</span>(ids)  <span class="co"># as.character() so we subset rows by id below, not by row position</span></span>
+<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">colnames</span>(m) <span class="ot">=</span> <span class="fu">paste0</span>(<span class="st">&quot;draw&quot;</span>, <span class="fu">seq_len</span>(<span class="fu">ncol</span>(m)))</span>
+<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>  m[<span class="fu">as.character</span>(plot_ids), , drop <span class="ot">=</span> <span class="cn">FALSE</span>] <span class="sc">|&gt;</span></span>
+<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">as_tibble</span>(<span class="at">rownames =</span> <span class="st">&quot;id&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">pivot_longer</span>(<span class="sc">-</span>id, <span class="at">names_to =</span> <span class="st">&quot;draw&quot;</span>, <span class="at">values_to =</span> <span class="st">&quot;value&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">mutate</span>(<span class="at">parameter =</span> parameter_name)</span>
+<span id="cb38-11"><a href="#cb38-11" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb38-12"><a href="#cb38-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-13"><a href="#cb38-13" aria-hidden="true" tabindex="-1"></a>draws_native_long <span class="ot">=</span> <span class="fu">bind_rows</span>(</span>
+<span id="cb38-14"><a href="#cb38-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_Arew, <span class="st">&quot;Arew&quot;</span>),</span>
+<span id="cb38-15"><a href="#cb38-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_Apun, <span class="st">&quot;Apun&quot;</span>),</span>
+<span id="cb38-16"><a href="#cb38-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_R,    <span class="st">&quot;R&quot;</span>),</span>
+<span id="cb38-17"><a href="#cb38-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_P,    <span class="st">&quot;P&quot;</span>)</span>
+<span id="cb38-18"><a href="#cb38-18" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb38-19"><a href="#cb38-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">parameter =</span> <span class="fu">factor</span>(parameter, <span class="at">levels =</span> subj_pars))</span>
+<span id="cb38-20"><a href="#cb38-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-21"><a href="#cb38-21" aria-hidden="true" tabindex="-1"></a>draws_probit_long <span class="ot">=</span> <span class="fu">bind_rows</span>(</span>
+<span id="cb38-22"><a href="#cb38-22" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_Arew_z, <span class="st">&quot;Arew&quot;</span>),</span>
+<span id="cb38-23"><a href="#cb38-23" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_Apun_z, <span class="st">&quot;Apun&quot;</span>),</span>
+<span id="cb38-24"><a href="#cb38-24" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_R_z,    <span class="st">&quot;R&quot;</span>),</span>
+<span id="cb38-25"><a href="#cb38-25" aria-hidden="true" tabindex="-1"></a>  <span class="fu">matrix_to_long</span>(draws_P_z,    <span class="st">&quot;P&quot;</span>)</span>
+<span id="cb38-26"><a href="#cb38-26" aria-hidden="true" tabindex="-1"></a>) <span class="sc">|&gt;</span></span>
+<span id="cb38-27"><a href="#cb38-27" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">parameter =</span> <span class="fu">factor</span>(parameter, <span class="at">levels =</span> subj_pars))</span>
+<span id="cb38-28"><a href="#cb38-28" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-29"><a href="#cb38-29" aria-hidden="true" tabindex="-1"></a>plot_subject_densities <span class="ot">=</span> <span class="cf">function</span>(draws_long, title, color) {</span>
+<span id="cb38-30"><a href="#cb38-30" aria-hidden="true" tabindex="-1"></a>  draws_long <span class="sc">|&gt;</span></span>
+<span id="cb38-31"><a href="#cb38-31" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> value, <span class="at">group =</span> id)) <span class="sc">+</span></span>
+<span id="cb38-32"><a href="#cb38-32" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_density</span>(<span class="at">alpha =</span> <span class="fl">0.1</span>, <span class="at">linewidth =</span> <span class="fl">0.3</span>, <span class="at">color =</span> color) <span class="sc">+</span></span>
+<span id="cb38-33"><a href="#cb38-33" aria-hidden="true" tabindex="-1"></a>    <span class="fu">facet_wrap</span>(<span class="sc">~</span>parameter, <span class="at">scales =</span> <span class="st">&quot;free&quot;</span>, <span class="at">nrow =</span> <span class="dv">1</span>) <span class="sc">+</span></span>
+<span id="cb38-34"><a href="#cb38-34" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">title =</span> title, <span class="at">x =</span> <span class="cn">NULL</span>, <span class="at">y =</span> <span class="st">&quot;Density&quot;</span>) <span class="sc">+</span></span>
+<span id="cb38-35"><a href="#cb38-35" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_bw</span>()</span>
+<span id="cb38-36"><a href="#cb38-36" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb38-37"><a href="#cb38-37" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-38"><a href="#cb38-38" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_subject_densities</span>(draws_native_long, <span class="st">&quot;Native scale -- Arew/Apun in [0,1], R/P in [0,30]&quot;</span>, <span class="st">&quot;steelblue&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
@@ -3870,7 +3937,7 @@ P_i = 30 \cdot \Phi(\mu_4 + \sigma_4 z^{P}_i)
 </div>
 </div>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_subject_densities</span>(draws_probit_long, <span class="st">&quot;Probit-transformed scale -- qnorm(Arew), qnorm(Apun), qnorm(R/30), qnorm(P/30)&quot;</span>, <span class="st">&quot;darkorange&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a><span class="fu">plot_subject_densities</span>(draws_probit_long, <span class="st">&quot;Probit-transformed scale -- qnorm(Arew), qnorm(Apun), qnorm(R/30), qnorm(P/30)&quot;</span>, <span class="st">&quot;darkorange&quot;</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
@@ -3883,25 +3950,25 @@ P_i = 30 \cdot \Phi(\mu_4 + \sigma_4 z^{P}_i)
 </section>
 <section id="rmu-on-the-probit-transformed-scale" class="level2">
 <h2 class="anchored" data-anchor-id="rmu-on-the-probit-transformed-scale">RMU on the probit-transformed scale</h2>
-<p><code>reliability()</code> doesn’t care what scale a matrix is on – we just pass it each transformed matrix in turn:</p>
+<p><code>rmu()</code> doesn’t care what scale a matrix is on – we just pass it each transformed matrix in turn:</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb37"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
-<span id="cb37-2"><a href="#cb37-2" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb37-3"><a href="#cb37-3" aria-hidden="true" tabindex="-1"></a>rel_Arew_z <span class="ot">=</span> <span class="fu">reliability</span>(draws_Arew_z)</span>
-<span id="cb37-4"><a href="#cb37-4" aria-hidden="true" tabindex="-1"></a>rel_Apun_z <span class="ot">=</span> <span class="fu">reliability</span>(draws_Apun_z)</span>
-<span id="cb37-5"><a href="#cb37-5" aria-hidden="true" tabindex="-1"></a>rel_R_z    <span class="ot">=</span> <span class="fu">reliability</span>(draws_R_z)</span>
-<span id="cb37-6"><a href="#cb37-6" aria-hidden="true" tabindex="-1"></a>rel_P_z    <span class="ot">=</span> <span class="fu">reliability</span>(draws_P_z)</span>
-<span id="cb37-7"><a href="#cb37-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb37-8"><a href="#cb37-8" aria-hidden="true" tabindex="-1"></a>rel_manual_transformed <span class="ot">=</span> <span class="fu">tibble</span>(</span>
-<span id="cb37-9"><a href="#cb37-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">parameter =</span> <span class="fu">c</span>(<span class="st">&quot;Arew&quot;</span>, <span class="st">&quot;Apun&quot;</span>, <span class="st">&quot;R&quot;</span>, <span class="st">&quot;P&quot;</span>),</span>
-<span id="cb37-10"><a href="#cb37-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">rmu       =</span> <span class="fu">c</span>(rel_Arew_z<span class="sc">$</span>hdci<span class="sc">$</span>rmu_estimate,    rel_Apun_z<span class="sc">$</span>hdci<span class="sc">$</span>rmu_estimate,    rel_R_z<span class="sc">$</span>hdci<span class="sc">$</span>rmu_estimate,    rel_P_z<span class="sc">$</span>hdci<span class="sc">$</span>rmu_estimate),</span>
-<span id="cb37-11"><a href="#cb37-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">lower     =</span> <span class="fu">c</span>(rel_Arew_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_lowerbound, rel_Apun_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_lowerbound, rel_R_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_lowerbound, rel_P_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_lowerbound),</span>
-<span id="cb37-12"><a href="#cb37-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">upper     =</span> <span class="fu">c</span>(rel_Arew_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_upperbound, rel_Apun_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_upperbound, rel_R_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_upperbound, rel_P_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_upperbound)</span>
-<span id="cb37-13"><a href="#cb37-13" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb37-14"><a href="#cb37-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb37-15"><a href="#cb37-15" aria-hidden="true" tabindex="-1"></a>rel_manual_transformed <span class="sc">|&gt;</span></span>
-<span id="cb37-16"><a href="#cb37-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
-<span id="cb37-17"><a href="#cb37-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> <span class="fu">c</span>(rmu, lower, upper), <span class="at">decimals =</span> <span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">42</span>)</span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>rel_Arew_z <span class="ot">=</span> <span class="fu">rmu</span>(draws_Arew_z)</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>rel_Apun_z <span class="ot">=</span> <span class="fu">rmu</span>(draws_Apun_z)</span>
+<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a>rel_R_z    <span class="ot">=</span> <span class="fu">rmu</span>(draws_R_z)</span>
+<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>rel_P_z    <span class="ot">=</span> <span class="fu">rmu</span>(draws_P_z)</span>
+<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-8"><a href="#cb40-8" aria-hidden="true" tabindex="-1"></a>rel_manual_transformed <span class="ot">=</span> <span class="fu">tibble</span>(</span>
+<span id="cb40-9"><a href="#cb40-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">parameter =</span> <span class="fu">c</span>(<span class="st">&quot;Arew&quot;</span>, <span class="st">&quot;Apun&quot;</span>, <span class="st">&quot;R&quot;</span>, <span class="st">&quot;P&quot;</span>),</span>
+<span id="cb40-10"><a href="#cb40-10" aria-hidden="true" tabindex="-1"></a>  <span class="at">rmu       =</span> <span class="fu">c</span>(rel_Arew_z<span class="sc">$</span>hdci<span class="sc">$</span>rmu_estimate,    rel_Apun_z<span class="sc">$</span>hdci<span class="sc">$</span>rmu_estimate,    rel_R_z<span class="sc">$</span>hdci<span class="sc">$</span>rmu_estimate,    rel_P_z<span class="sc">$</span>hdci<span class="sc">$</span>rmu_estimate),</span>
+<span id="cb40-11"><a href="#cb40-11" aria-hidden="true" tabindex="-1"></a>  <span class="at">lower     =</span> <span class="fu">c</span>(rel_Arew_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_lowerbound, rel_Apun_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_lowerbound, rel_R_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_lowerbound, rel_P_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_lowerbound),</span>
+<span id="cb40-12"><a href="#cb40-12" aria-hidden="true" tabindex="-1"></a>  <span class="at">upper     =</span> <span class="fu">c</span>(rel_Arew_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_upperbound, rel_Apun_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_upperbound, rel_R_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_upperbound, rel_P_z<span class="sc">$</span>hdci<span class="sc">$</span>hdci_upperbound)</span>
+<span id="cb40-13"><a href="#cb40-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb40-14"><a href="#cb40-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb40-15"><a href="#cb40-15" aria-hidden="true" tabindex="-1"></a>rel_manual_transformed <span class="sc">|&gt;</span></span>
+<span id="cb40-16"><a href="#cb40-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
+<span id="cb40-17"><a href="#cb40-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> <span class="fu">c</span>(rmu, lower, upper), <span class="at">decimals =</span> <span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div id="sdofjgqnme" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>#sdofjgqnme table {
@@ -4344,20 +4411,20 @@ height: 0px !important;
 <section id="comparing-native-scale-and-probit-transformed-rmu" class="level2">
 <h2 class="anchored" data-anchor-id="comparing-native-scale-and-probit-transformed-rmu">Comparing native-scale and probit-transformed RMU</h2>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>rmu_scale_comparison <span class="ot">=</span> <span class="fu">bind_rows</span>(</span>
-<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a>  rel_manual             <span class="sc">|&gt;</span> <span class="fu">mutate</span>(<span class="at">scale =</span> <span class="st">&quot;Native scale&quot;</span>),</span>
-<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>  rel_manual_transformed <span class="sc">|&gt;</span> <span class="fu">mutate</span>(<span class="at">scale =</span> <span class="st">&quot;Probit-transformed (qnorm)&quot;</span>)</span>
-<span id="cb38-4"><a href="#cb38-4" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb38-5"><a href="#cb38-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb38-6"><a href="#cb38-6" aria-hidden="true" tabindex="-1"></a>rmu_scale_comparison <span class="sc">|&gt;</span></span>
-<span id="cb38-7"><a href="#cb38-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> parameter, <span class="at">y =</span> rmu, <span class="at">color =</span> scale, <span class="at">shape =</span> scale)) <span class="sc">+</span></span>
-<span id="cb38-8"><a href="#cb38-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_pointrange</span>(<span class="fu">aes</span>(<span class="at">ymin =</span> lower, <span class="at">ymax =</span> upper), <span class="at">position =</span> <span class="fu">position_dodge</span>(<span class="at">width =</span> <span class="fl">0.4</span>)) <span class="sc">+</span></span>
-<span id="cb38-9"><a href="#cb38-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_y_continuous</span>(<span class="at">limits =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>)) <span class="sc">+</span></span>
-<span id="cb38-10"><a href="#cb38-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
-<span id="cb38-11"><a href="#cb38-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> <span class="cn">NULL</span>, <span class="at">y =</span> <span class="st">&quot;RMU estimate&quot;</span>, <span class="at">color =</span> <span class="st">&quot;Scale&quot;</span>, <span class="at">shape =</span> <span class="st">&quot;Scale&quot;</span>,</span>
-<span id="cb38-12"><a href="#cb38-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">&quot;RMU: native scale vs. probit-transformed parameters&quot;</span></span>
-<span id="cb38-13"><a href="#cb38-13" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">+</span></span>
-<span id="cb38-14"><a href="#cb38-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb41"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a>rmu_scale_comparison <span class="ot">=</span> <span class="fu">bind_rows</span>(</span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>  rel_manual             <span class="sc">|&gt;</span> <span class="fu">mutate</span>(<span class="at">scale =</span> <span class="st">&quot;Native scale&quot;</span>),</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a>  rel_manual_transformed <span class="sc">|&gt;</span> <span class="fu">mutate</span>(<span class="at">scale =</span> <span class="st">&quot;Probit-transformed (qnorm)&quot;</span>)</span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a>rmu_scale_comparison <span class="sc">|&gt;</span></span>
+<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="fu">aes</span>(<span class="at">x =</span> parameter, <span class="at">y =</span> rmu, <span class="at">color =</span> scale, <span class="at">shape =</span> scale)) <span class="sc">+</span></span>
+<span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_pointrange</span>(<span class="fu">aes</span>(<span class="at">ymin =</span> lower, <span class="at">ymax =</span> upper), <span class="at">position =</span> <span class="fu">position_dodge</span>(<span class="at">width =</span> <span class="fl">0.4</span>)) <span class="sc">+</span></span>
+<span id="cb41-9"><a href="#cb41-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_y_continuous</span>(<span class="at">limits =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">1</span>)) <span class="sc">+</span></span>
+<span id="cb41-10"><a href="#cb41-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(</span>
+<span id="cb41-11"><a href="#cb41-11" aria-hidden="true" tabindex="-1"></a>    <span class="at">x =</span> <span class="cn">NULL</span>, <span class="at">y =</span> <span class="st">&quot;RMU estimate&quot;</span>, <span class="at">color =</span> <span class="st">&quot;Scale&quot;</span>, <span class="at">shape =</span> <span class="st">&quot;Scale&quot;</span>,</span>
+<span id="cb41-12"><a href="#cb41-12" aria-hidden="true" tabindex="-1"></a>    <span class="at">title =</span> <span class="st">&quot;RMU: native scale vs. probit-transformed parameters&quot;</span></span>
+<span id="cb41-13"><a href="#cb41-13" aria-hidden="true" tabindex="-1"></a>  ) <span class="sc">+</span></span>
+<span id="cb41-14"><a href="#cb41-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div>
 <figure class="figure">
@@ -4381,20 +4448,20 @@ height: 0px !important;
 <h2 class="anchored" data-anchor-id="calculating-empirical-reliability">Calculating empirical reliability</h2>
 <p>Unlike RMU, empirical reliability doesn’t need the full matrix of posterior draws – just each participant’s posterior mean (<span class="math inline">\(\hat\theta_p\)</span> above) and posterior variance (<span class="math inline">\(\hat V_p\)</span> above), which <code>cmdstanr</code>’s <code>summary()</code> gives us directly:</p>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb39"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" aria-hidden="true" tabindex="-1"></a>empirical_reliability <span class="ot">=</span> <span class="cf">function</span>(fit, par) {</span>
-<span id="cb39-2"><a href="#cb39-2" aria-hidden="true" tabindex="-1"></a>  s         <span class="ot">=</span> fit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">summary</span>(<span class="at">variables =</span> par)  <span class="co"># one row per participant: posterior mean &amp; sd</span></span>
-<span id="cb39-3"><a href="#cb39-3" aria-hidden="true" tabindex="-1"></a>  theta_hat <span class="ot">=</span> s<span class="sc">$</span>mean  <span class="co"># each participant&#39;s point estimate</span></span>
-<span id="cb39-4"><a href="#cb39-4" aria-hidden="true" tabindex="-1"></a>  V_hat     <span class="ot">=</span> s<span class="sc">$</span>sd<span class="sc">^</span><span class="dv">2</span>  <span class="co"># each participant&#39;s posterior variance (sampling/measurement error)</span></span>
-<span id="cb39-5"><a href="#cb39-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">var</span>(theta_hat) <span class="sc">/</span> (<span class="fu">var</span>(theta_hat) <span class="sc">+</span> <span class="fu">mean</span>(V_hat))</span>
-<span id="cb39-6"><a href="#cb39-6" aria-hidden="true" tabindex="-1"></a>}</span>
-<span id="cb39-7"><a href="#cb39-7" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb39-8"><a href="#cb39-8" aria-hidden="true" tabindex="-1"></a>rel_empirical <span class="ot">=</span> <span class="fu">map_dfr</span>(subj_pars, <span class="cf">function</span>(par) {</span>
-<span id="cb39-9"><a href="#cb39-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tibble</span>(<span class="at">parameter =</span> par, <span class="at">empirical_reliability =</span> <span class="fu">empirical_reliability</span>(fit_bandit, par))</span>
-<span id="cb39-10"><a href="#cb39-10" aria-hidden="true" tabindex="-1"></a>})</span>
-<span id="cb39-11"><a href="#cb39-11" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb39-12"><a href="#cb39-12" aria-hidden="true" tabindex="-1"></a>rel_empirical <span class="sc">|&gt;</span></span>
-<span id="cb39-13"><a href="#cb39-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
-<span id="cb39-14"><a href="#cb39-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> empirical_reliability, <span class="at">decimals =</span> <span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>empirical_reliability <span class="ot">=</span> <span class="cf">function</span>(fit, par) {</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>  s         <span class="ot">=</span> fit<span class="sc">$</span>fit<span class="sc">$</span><span class="fu">summary</span>(<span class="at">variables =</span> par)  <span class="co"># one row per participant: posterior mean &amp; sd</span></span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>  theta_hat <span class="ot">=</span> s<span class="sc">$</span>mean  <span class="co"># each participant&#39;s point estimate</span></span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>  V_hat     <span class="ot">=</span> s<span class="sc">$</span>sd<span class="sc">^</span><span class="dv">2</span>  <span class="co"># each participant&#39;s posterior variance (sampling/measurement error)</span></span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">var</span>(theta_hat) <span class="sc">/</span> (<span class="fu">var</span>(theta_hat) <span class="sc">+</span> <span class="fu">mean</span>(V_hat))</span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a>rel_empirical <span class="ot">=</span> <span class="fu">map_dfr</span>(subj_pars, <span class="cf">function</span>(par) {</span>
+<span id="cb42-9"><a href="#cb42-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">tibble</span>(<span class="at">parameter =</span> par, <span class="at">empirical_reliability =</span> <span class="fu">empirical_reliability</span>(fit_bandit, par))</span>
+<span id="cb42-10"><a href="#cb42-10" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb42-11"><a href="#cb42-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-12"><a href="#cb42-12" aria-hidden="true" tabindex="-1"></a>rel_empirical <span class="sc">|&gt;</span></span>
+<span id="cb42-13"><a href="#cb42-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
+<span id="cb42-14"><a href="#cb42-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> empirical_reliability, <span class="at">decimals =</span> <span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div id="dvlubmfkuz" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>#dvlubmfkuz table {
@@ -4827,14 +4894,14 @@ height: 0px !important;
 <section id="comparing-rmu-and-empirical-reliability" class="level2">
 <h2 class="anchored" data-anchor-id="comparing-rmu-and-empirical-reliability">Comparing RMU and empirical reliability</h2>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb40"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a>rel_comparison <span class="ot">=</span> rel_manual <span class="sc">|&gt;</span></span>
-<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(parameter, rmu) <span class="sc">|&gt;</span></span>
-<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(rel_empirical, <span class="at">by =</span> <span class="st">&quot;parameter&quot;</span>) <span class="sc">|&gt;</span></span>
-<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">difference =</span> rmu <span class="sc">-</span> empirical_reliability)</span>
-<span id="cb40-5"><a href="#cb40-5" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb40-6"><a href="#cb40-6" aria-hidden="true" tabindex="-1"></a>rel_comparison <span class="sc">|&gt;</span></span>
-<span id="cb40-7"><a href="#cb40-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
-<span id="cb40-8"><a href="#cb40-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> <span class="fu">c</span>(rmu, empirical_reliability, difference), <span class="at">decimals =</span> <span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb43"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a>rel_comparison <span class="ot">=</span> rel_manual <span class="sc">|&gt;</span></span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">select</span>(parameter, rmu) <span class="sc">|&gt;</span></span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">left_join</span>(rel_empirical, <span class="at">by =</span> <span class="st">&quot;parameter&quot;</span>) <span class="sc">|&gt;</span></span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">difference =</span> rmu <span class="sc">-</span> empirical_reliability)</span>
+<span id="cb43-5"><a href="#cb43-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb43-6"><a href="#cb43-6" aria-hidden="true" tabindex="-1"></a>rel_comparison <span class="sc">|&gt;</span></span>
+<span id="cb43-7"><a href="#cb43-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">gt</span>() <span class="sc">|&gt;</span></span>
+<span id="cb43-8"><a href="#cb43-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">fmt_number</span>(<span class="at">columns =</span> <span class="fu">c</span>(rmu, empirical_reliability, difference), <span class="at">decimals =</span> <span class="dv">3</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output-display">
 <div id="scuaktxrrp" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
 <style>#scuaktxrrp table {
@@ -5279,12 +5346,12 @@ height: 0px !important;
 <section id="wrap-up" class="level1">
 <h1>Wrap-up</h1>
 <p>Check the convergence diagnostics above before reading much into the reliability estimates – if Rhat/ESS look healthy and there are no divergent transitions, the numbers above are a reasonable single-fit estimate of RMU reliability for this task and sample. For a more thoroughly-checked version of this exact model on this exact data (checked against test-retest and split-half reliability, and against a fit to the full N = 547 sample), see <code>applied_example_pike/02_02_pike_2026_bandit.qmd</code>.</p>
-<p>The key takeaway for your own models: whichever way you fit a hierarchical Bayesian model, if you can get a matrix of posterior draws with participants on the rows and draws on the columns, you can calculate RMU reliability with <code>reliability()</code> – and if your model was fit with <code>hBayesDM</code> specifically, you can skip the matrix-pulling step entirely and just call <code>reliability()</code> on the fitted model object.</p>
+<p>The key takeaway for your own models: whichever way you fit a hierarchical Bayesian model, if you can get a matrix of posterior draws with participants on the rows and draws on the columns, you can calculate RMU reliability with <code>rmu()</code> – and if your model was fit with <code>hBayesDM</code> or <code>brms</code>, you can skip the matrix-pulling step entirely and just call <code>rmu()</code> on the fitted model object.</p>
 </section>
 <section id="session-info" class="level1">
 <h1>Session Info</h1>
 <div class="cell">
-<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb41"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb44"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>R version 4.6.1 (2026-06-24)
 Platform: x86_64-pc-linux-gnu
@@ -5309,33 +5376,32 @@ attached base packages:
 [1] stats     graphics  grDevices utils     datasets  methods   base     
 
 other attached packages:
- [1] gt_1.3.0            gbtoolbox_0.0.3.1   cmdstanr_0.9.0     
+ [1] gt_1.3.0            gbtoolbox_0.0.4     cmdstanr_0.9.0     
  [4] hBayesDM_2.0.0.9000 lubridate_1.9.5     forcats_1.0.1      
  [7] stringr_1.6.0       dplyr_1.2.1         purrr_1.2.2        
 [10] readr_2.2.0         tidyr_1.3.2         tibble_3.3.1       
 [13] ggplot2_4.0.3       tidyverse_2.0.0    
 
 loaded via a namespace (and not attached):
- [1] gtable_0.3.6         tensorA_0.36.2.1     xfun_0.59           
- [4] htmlwidgets_1.6.4    processx_3.9.0       tzdb_0.5.0          
- [7] vctrs_0.7.3          tools_4.6.1          ps_1.9.3            
-[10] generics_0.1.4       parallel_4.6.1       pkgconfig_2.0.3     
-[13] data.table_1.18.4    checkmate_2.3.4      RColorBrewer_1.1-3  
-[16] S7_0.2.2             distributional_0.8.1 lifecycle_1.0.5     
-[19] compiler_4.6.1       farver_2.1.2         codetools_0.2-20    
-[22] htmltools_0.5.9      sass_0.4.10          bayesplot_1.15.0    
-[25] yaml_2.3.12          pillar_1.11.1        crayon_1.5.3        
-[28] abind_1.4-8          posterior_1.7.0      tidyselect_1.2.1    
-[31] digest_0.6.39        stringi_1.8.7        labeling_0.4.3      
-[34] fastmap_1.2.0        grid_4.6.1           cli_3.6.6           
-[37] magrittr_2.0.5       loo_2.10.0           withr_3.0.3         
-[40] scales_1.4.0         backports_1.5.1      bit64_4.8.2         
-[43] timechange_0.4.0     rmarkdown_2.31       matrixStats_1.5.0   
-[46] bit_4.6.0            otel_0.2.0           hms_1.1.4           
-[49] evaluate_1.0.5       knitr_1.51           ggdist_3.3.3        
-[52] rlang_1.3.0          Rcpp_1.1.2           glue_1.8.1          
-[55] xml2_1.6.0           rstudioapi_0.19.0    vroom_1.7.1         
-[58] jsonlite_2.0.0       R6_2.6.1             fs_2.1.0            </code></pre>
+ [1] ggdist_3.3.3         tensorA_0.36.2.1     sass_0.4.10         
+ [4] generics_0.1.4       xml2_1.6.0           stringi_1.8.7       
+ [7] hms_1.1.4            digest_0.6.39        magrittr_2.0.5      
+[10] evaluate_1.0.5       grid_4.6.1           timechange_0.4.0    
+[13] RColorBrewer_1.1-3   fastmap_1.2.0        jsonlite_2.0.0      
+[16] processx_3.9.0       backports_1.5.1      ps_1.9.3            
+[19] scales_1.4.0         codetools_0.2-20     abind_1.4-8         
+[22] cli_3.6.6            rlang_1.3.0          remotes_2.5.0       
+[25] withr_3.0.3          yaml_2.3.12          otel_0.2.0          
+[28] tools_4.6.1          parallel_4.6.1       tzdb_0.5.0          
+[31] checkmate_2.3.4      vctrs_0.7.3          posterior_1.7.0     
+[34] R6_2.6.1             matrixStats_1.5.0    lifecycle_1.0.5     
+[37] fs_2.1.0             htmlwidgets_1.6.4    pkgconfig_2.0.3     
+[40] pillar_1.11.1        gtable_0.3.6         Rcpp_1.1.2          
+[43] loo_2.10.0           glue_1.8.1           data.table_1.18.4   
+[46] xfun_0.59            tidyselect_1.2.1     knitr_1.51          
+[49] farver_2.1.2         bayesplot_1.15.0     htmltools_0.5.9     
+[52] labeling_0.4.3       rmarkdown_2.31       compiler_4.6.1      
+[55] S7_0.2.2             distributional_0.8.1</code></pre>
 </div>
 </div>
 </section>

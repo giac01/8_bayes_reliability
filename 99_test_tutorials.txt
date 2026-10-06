@@ -1,1 +1,21 @@
-printf '%s\n' tutorial_*.qmd | xargs -P 4 -I{} sh -c 'quarto render "{}" > "{}.log" 2>&1 && echo "OK: {}" || echo "FAIL: {}"'
+# Render all tutorials (HTML, then typst PDF) inside the v6 container, 4 at a time.
+# Mounting /home/giaco as /home/rstudio means cmdstanr finds cmdstan at ~/.cmdstan.
+# Rendering uses the knitr caches in tutorial_*_cache/; the model-fit chunks are labelled
+# (fit-*) so that edits elsewhere in a tutorial do not force a refit.
+
+docker run --rm -it \
+  --user rstudio \
+  -v /home/giaco:/home/rstudio \
+  -w "/home/rstudio${PWD#/home/giaco}" \
+  bignardig/tidyverse461:v6 \
+  bash -c 'printf "%s\n" tutorial_*.qmd | xargs -P 4 -I{} sh -c "quarto render \"{}\" > \"{}.log\" 2>&1 && echo \"OK: {}\" || echo \"FAIL: {}\""'
+
+docker run --rm -it \
+  --user rstudio \
+  -v /home/giaco:/home/rstudio \
+  -w "/home/rstudio${PWD#/home/giaco}" \
+  bignardig/tidyverse461:v6 \
+  bash -c 'printf "%s\n" tutorial_*.qmd | xargs -P 4 -I{} sh -c "quarto render \"{}\" --to typst > \"{}.typst.log\" 2>&1 && echo \"OK: {}\" || echo \"FAIL: {}\""'
+
+# Original (host) one-liner:
+# printf '%s\n' tutorial_*.qmd | xargs -P 4 -I{} sh -c 'quarto render "{}" > "{}.log" 2>&1 && echo "OK: {}" || echo "FAIL: {}"'

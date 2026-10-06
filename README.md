@@ -2,7 +2,7 @@
 
 [![Preprint](https://img.shields.io/badge/preprint-PsyArXiv-1E90FF)](https://osf.io/preprints/psyarxiv/h54k8_v1)
 ![License](https://img.shields.io/github/license/giac01/8_bayes_reliability)
-![Docker](https://img.shields.io/badge/docker-bignardig%2Ftidyverse461%3Av5-2496ED?logo=docker&logoColor=white)
+![Docker](https://img.shields.io/badge/docker-bignardig%2Ftidyverse461-2496ED?logo=docker&logoColor=white)
 ![R](https://img.shields.io/badge/R-4.6.1-276DC3?logo=r&logoColor=white)
 ![Stan](https://img.shields.io/badge/Stan-brms%20%2F%20cmdstanr-B2001D?logo=stan&logoColor=white)
 ![Last Commit](https://img.shields.io/github/last-commit/giac01/8_bayes_reliability)
@@ -29,9 +29,12 @@ All code runs in the **`bignardig/tidyverse461`** Docker container (**R 4.6.1**;
 |---|---|---|
 | Study 1 and Study 2 simulations | `2_study1_1_simulate.R`, `3_study2_1_simulate.R` | `bignardig/tidyverse461:v2` |
 | Study 3 simulations | `4_study3_1_simulate.R`, `5_study3_1_simulate_320trials.R`, `6_study3_1_simulate_240pps.R` | `bignardig/tidyverse461:v3` (adds the `libtbb-dev` system library needed by the Stan model) |
-| Analysis scripts and applied example | `*_2_analysis.R`, `applied_example_pike/` | `bignardig/tidyverse461:v5` |
+| Analysis scripts and applied-example model fitting | `*_2_analysis.R`, `applied_example_pike/02_01_*.R` | `bignardig/tidyverse461:v5` |
+| Tutorials and applied-example notebook | `tutorial_*.qmd`, `applied_example_pike/02_02_pike_2026_bandit.qmd` | `bignardig/tidyverse461:v6` (updates `gbtoolbox`, in which `reliability()` was renamed `rmu()`) |
 
 The simulation results in `results/` were produced with the v2/v3 containers; the summary tables and figures (`results_tables/`, `plots/`) are produced from them with v5. Each `_2_analysis.R` script states this in its header. The container does not include cmdstan (v2.39.0), which is installed separately and pointed to with `cmdstanr::set_cmdstan_path()` in the simulation scripts (`0_set_cmdstan_path_cluster.R` on the HPC).
+
+The only difference between v5 and v6 is the version of [`gbtoolbox`](https://github.com/giac01/gbtoolbox): in v6 the RMU function is called `rmu()` and gains methods for fitted `brms` and `hBayesDM` model objects. The simulation and analysis scripts call it by its old name, `reliability()`, which still works in v6 (it is a deprecated alias for `rmu()` that gives identical results), so in practice either container can be used for the analysis scripts. The tutorials and the applied-example notebook use `rmu()` and therefore need v6.
 
 ## Structure
 
@@ -42,7 +45,7 @@ The simulation results in `results/` were produced with the v2/v3 containers; th
 - `9_manuscript_normal_posterior_plot_withpoints.R` — generates the normal-posterior illustrative figure used in the manuscript
 - `helper_functions/` — shared R functions (simulation, model-fitting, and reliability-estimation helpers); `helper_functions/depreciated/` holds superseded versions kept for reference
 - `stan_models/` — Stan model files
-- `data/` — study data (not tracked in git)
+- `data/` — the openly available datasets used by the tutorials and applied example (see [Data sources and licences](#data-sources-and-licences) below)
 - `results/`, `results_tables/` — simulation outputs
 - `applied_example_pike/` — worked applied example fitting the RMU method to real reinforcement-learning data (see [Applied example](#applied-example) below)
 - `tutorial_calculating_rmu_gonogo.qmd`, `tutorial_rmu_sum_score_reliability.qmd`, `tutorial_calculating_rmu_bandit.qmd` — worked tutorials (see [Tutorials](#tutorials) below)
@@ -91,17 +94,17 @@ Simulation functions used: **`sim_ri`** (simulates trial-by-trial choices/outcom
 - `02_01_pike_2026_fit_bandit_models.R` — fits the model separately to sessions 1 and 2 for the N = 115 subjects with both sessions (for test-retest reliability)
 - `02_01_pike_2026_fit_bandit_splithalf_models.R` — fits the model to first-half/second-half trials within each session, for the same N = 115 subjects (for split-half reliability)
 - `02_01_pike_2026_fit_bandit_fullsample.R` — fits the model (full-length and split-half) to the full N = 547 sample, since RMU doesn't require test-retest data
-- [`02_02_pike_2026_bandit.html`](applied_example_pike/02_02_pike_2026_bandit.html) (source: `02_02_pike_2026_bandit.qmd`) — reads the saved fits from the three scripts above and reports/compares the RMU, test-retest, and split-half reliability estimates (run the three fitting scripts first, e.g. inside `bignardig/tidyverse461:v5`)
+- [`02_02_pike_2026_bandit.html`](applied_example_pike/02_02_pike_2026_bandit.html) (source: `02_02_pike_2026_bandit.qmd`) — reads the saved fits from the three scripts above and reports/compares the RMU (via `gbtoolbox::rmu()`), test-retest, and split-half reliability estimates (run the three fitting scripts first, e.g. inside `bignardig/tidyverse461:v5`; render the notebook inside `bignardig/tidyverse461:v6`)
 
 ## Tutorials
 
-Standalone worked tutorials, not tied to the paper's simulation studies:
+Standalone worked tutorials, not tied to the paper's simulation studies. All three use `gbtoolbox::rmu()`, and each starts with instructions for cloning this repository (to get the `.qmd` source and data), a code chunk that installs any missing R packages, and instructions for installing a Stan backend (`cmdstanr` or `rstan`):
 
-- [`tutorial_calculating_rmu_gonogo.html`](tutorial_calculating_rmu_gonogo.html) (source: `tutorial_calculating_rmu_gonogo.qmd`) — calculates RMU reliability for the `d'` parameter of a signal-detection model fit to go/no-go task data ([Hedge, Powell & Sumner, 2018](https://link.springer.com/article/10.3758/s13428-017-0935-1); data in `data/osf_hedge_cwzds/`), comparing against test-retest, split-half, and empirical reliability
-- [`tutorial_rmu_sum_score_reliability.html`](tutorial_rmu_sum_score_reliability.html) (source: `tutorial_rmu_sum_score_reliability.qmd`) — demonstrates RMU for estimating mean/sum score reliability using a simple multilevel simulation (repeated length measurements)
-- [`tutorial_calculating_rmu_bandit.html`](tutorial_calculating_rmu_bandit.html) (source: `tutorial_calculating_rmu_bandit.qmd`) — calculates RMU reliability for a reinforcement-learning (fluctuating bandit) task fit hierarchically with `hBayesDM::bandit4arm_4par()`, both manually from posterior draws and automatically via `reliability()`
+- [`tutorial_calculating_rmu_gonogo.html`](tutorial_calculating_rmu_gonogo.html) (source: `tutorial_calculating_rmu_gonogo.qmd`) — calculates RMU reliability for the `d'` parameter of a signal-detection model fit to go/no-go task data ([Hedge, Powell & Sumner, 2018](https://link.springer.com/article/10.3758/s13428-017-0935-1); data in `data/osf_hedge_cwzds/`), both from a matrix of posterior draws and by passing the fitted `brms` model to `rmu()` directly, comparing against test-retest, split-half, and empirical reliability
+- [`tutorial_rmu_sum_score_reliability.html`](tutorial_rmu_sum_score_reliability.html) (source: `tutorial_rmu_sum_score_reliability.qmd`) — demonstrates RMU for estimating mean/sum score reliability using a simple multilevel simulation (repeated length measurements), again showing both the fitted-`brms`-model and the manual posterior-draw-matrix routes into `rmu()`
+- [`tutorial_calculating_rmu_bandit.html`](tutorial_calculating_rmu_bandit.html) (source: `tutorial_calculating_rmu_bandit.qmd`) — calculates RMU reliability for a reinforcement-learning (fluctuating bandit) task fit hierarchically with `hBayesDM::bandit4arm_4par()`, both manually from posterior draws and automatically via `rmu()`
 
-PDF versions of each tutorial (`tutorial_*.pdf`) are rendered from the same `.qmd` sources with `quarto render <file>.qmd --to typst` inside `bignardig/tidyverse461:v5`.
+PDF versions of each tutorial (`tutorial_*.pdf`) are rendered from the same `.qmd` sources with `quarto render <file>.qmd --to typst` inside `bignardig/tidyverse461:v6` (see `99_test_tutorials.txt` for the commands used).
 
 ## Data sources and licences
 
