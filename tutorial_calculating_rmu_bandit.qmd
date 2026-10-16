@@ -2,7 +2,7 @@
 title: "Tutorial: Calculating RMU reliability for a reinforcement learning task, using hBayesDM"
 author: "Giacomo Bignardi"
 date: "09/14/2026"
-date-modified: "10/2/2026"
+date-modified: "10/16/2026"
 cache: true
 format:
   html:
@@ -27,7 +27,7 @@ This tutorial can be run and tested inside the docker image `bignardig/tidyverse
 You don't need docker to follow along, though -- you can also run the code the usual way, in your own R installation. The code in [Setup] will install all the necessary R packages for you.
 :::
 
-This is a brief walk-through of how to calculate reliability using relative measurement uncertainty (RMU) described in our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1), this time applied to a **reinforcement learning task** rather than a  signal-detection model (see the [go/no-go tutorial](tutorial_calculating_rmu_gonogo.html) for that example).
+This is a brief walk-through of how to calculate reliability using relative measurement uncertainty (RMU) described in our [pre-print](https://osf.io/preprints/psyarxiv/h54k8_v1), this time applied to a **reinforcement learning task** rather than a signal-detection model (see the [go/no-go tutorial](tutorial_calculating_rmu_gonogo.html) for that example).
 
 Reinforcement learning models can be fit hierarchically in a Bayesian framework, and [`hBayesDM`](https://github.com/CCS-Lab/hBayesDM) is a popular R package that ships ready-made Stan models for many common tasks, so you don't have to write your own Stan code. This tutorial shows:
 
@@ -61,11 +61,12 @@ If you'd rather not use git, you can download the same files as a zip archive fr
 
 The tutorial `.qmd` files sit in the root folder of the repository, and the data paths in the code below are relative to that folder. If you open the `.qmd` file in RStudio and run the chunks or render it, the working directory is set to the repository root for you. If you're instead running the code in a plain R session, set the working directory to the repository root first, e.g. `setwd("~/8_bayes_reliability")`.
 
-If you're using the docker image, start the container from inside the cloned folder, mounting it as the working directory. For example, the following renders this tutorial (`cmdstan` is not included in the image, so you will also need to make it available inside the container -- see [Pointing cmdstanr at cmdstan] below):
+If you're using the docker image, start the container from inside the cloned folder, mounting it as the working directory. `cmdstan` is not included in the image, so the command below also mounts your `cmdstan` installation folder (`~/.cmdstan`, where `install_cmdstan()` puts it) into the container, at the location where `cmdstanr` will look for it -- see [Pointing cmdstanr at cmdstan] below. For example, the following renders this tutorial:
 
 ```bash
 docker run --rm -it --user rstudio \
   -v "$PWD":/home/rstudio/8_bayes_reliability \
+  -v "$HOME/.cmdstan":/home/rstudio/.cmdstan \
   -w /home/rstudio/8_bayes_reliability \
   bignardig/tidyverse461:v6 \
   quarto render tutorial_calculating_rmu_bandit.qmd
@@ -95,15 +96,6 @@ if (!requireNamespace("gbtoolbox", quietly = TRUE) || !"rmu" %in% getNamespaceEx
 if (!requireNamespace("hBayesDM", quietly = TRUE) || packageVersion("hBayesDM") < "2.0") {
   remotes::install_github("CCS-Lab/hBayesDM", subdir = "R")
 }
-```
-
-If you only want the `rmu()` function and not the whole `gbtoolbox` package, you can source it straight from github instead (this gives you the version of `rmu()` that takes a matrix of posterior draws, used in the "manual" approach below, but not the version that takes a fitted `hBayesDM` model used in the "automatic" approach, and it requires `ggdist` to be installed):
-
-```{r}
-#| eval: false
-
-source("https://raw.githubusercontent.com/giac01/gbtoolbox/refs/heads/main/R/rmu.R")
-
 ```
 
 ::: {.callout-important}
@@ -137,12 +129,11 @@ data_dir = file.path("data", "pike_2026")
 
 ## Pointing cmdstanr at cmdstan
 
-If `cmdstanr` doesn't already know where cmdstan is (e.g. from a previous `set_cmdstan_path()` call, saved in `cmdstanr`'s config file, or because it was installed to the default location with `install_cmdstan()`), we point it at one below -- either via a `CMDSTAN` environment variable, or by editing the fallback path directly:
+`cmdstanr` needs to know where `cmdstan` is installed. It finds it automatically if `cmdstan` was installed with `install_cmdstan()`, which puts it in `~/.cmdstan` (the newest version in that folder is used), or if the `CMDSTAN` environment variable points to it. If you installed `cmdstan` somewhere else, tell `cmdstanr` where it is with `set_cmdstan_path()`. Either way, the following should print the path to your `cmdstan` folder, and will give an error if `cmdstanr` can't find one:
 
 ```{r}
-cmdstan_path_candidate = Sys.getenv("CMDSTAN", unset = file.path(Sys.getenv("HOME"), ".cmdstan", "cmdstan-2.39.0"))
-
-if (dir.exists(cmdstan_path_candidate)) cmdstanr::set_cmdstan_path(cmdstan_path_candidate)
+# Only needed if cmdstan is in a non-standard location:
+# cmdstanr::set_cmdstan_path("/path/to/your/cmdstan")
 
 cmdstanr::cmdstan_path()
 ```
@@ -316,7 +307,7 @@ set.seed(42)
 Arew_draws = fit_bandit$fit$draws(variables = "Arew", format = "matrix") |>  # draws x participants
   t()  # transpose so participants are on rows, draws are on columns
 
-dim(Arew_draws)  # 115 participants x 4000 posterior draws (4 chains x 1000 post-warmup draws)
+dim(Arew_draws)  # 115 participants x 8000 posterior draws (4 chains x 2000 post-warmup draws)
 
 rel_Arew_manual = rmu(Arew_draws)
 
@@ -366,7 +357,7 @@ rel_auto$Arew$hdci
 
 RMU (like an ICC) is not invariant to nonlinear transformations. It is important to calculate RMU using the same scaling that will be used in the main analysis. 
 
-The analysis model actually creates the sensitivity and learning rate parameters by transforming normally distributed variables $z^{r}_i, z^{p}_i, z^{P}_i, z^{R}_i$ through the inverse-cumulative distribution version $\Phi(\cdot)$ -- see the [hierarchical priors](applied_example_pike/02_02_pike_2026_bandit.html#hierarchical-priors-non-centred-parameterisation) section of the full applied example for the Stan code this comes from. 
+The analysis model actually creates the sensitivity and learning rate parameters by transforming normally distributed variables $z^{r}_i, z^{p}_i, z^{P}_i, z^{R}_i$ through the standard normal cumulative distribution function $\Phi(\cdot)$ (`pnorm()` in R), which maps them onto $(0, 1)$ -- see the [hierarchical priors](applied_example_pike/02_02_pike_2026_bandit.html#hierarchical-priors-non-centred-parameterisation) section of the full applied example for the Stan code this comes from. 
 
 $$
 \alpha^{r}_i = \Phi(\mu_1 + \sigma_1 z^{r}_i), \quad
@@ -375,7 +366,7 @@ R_i = 30 \cdot \Phi(\mu_3 + \sigma_3 z^{R}_i), \quad
 P_i = 30 \cdot \Phi(\mu_4 + \sigma_4 z^{P}_i)
 $$
 
-We can run that transformation in reverse, dividing the sensitivities (`R`, `P`) by 30 to bring them back onto $(0,1)$, then applying the normal inverse CDF (`qnorm()`) to every posterior draw -- to recover each participant's posterior draws on the original unconstrained ("probit") scale, and check whether RMU computed on that scale differs from RMU computed on the native $(0,1)$/$(0,30)$ scale we used above.
+We can run that transformation in reverse, dividing the sensitivities (`R`, `P`) by 30 to bring them back onto $(0,1)$, then applying the inverse of $\Phi$ (`qnorm()`) to every posterior draw -- to recover each participant's posterior draws on the original unconstrained ("probit") scale, and check whether RMU computed on that scale differs from RMU computed on the native $(0,1)$/$(0,30)$ scale we used above.
 
 Instead of using this transformation, you can use whatever function is appropriate in your case (e.g., log-transform, logit).
 
@@ -494,7 +485,7 @@ rmu_scale_comparison |>
   theme_bw()
 ```
 
-Here they line up closely, but that won't always be true -- when RMU differs noticeably by scale, it's a sign that "how reliable is this parameter" doesn't have one scale-free answer, and the scale you report reliability on should be the one you'll actually use in downstream analyses. For a full write-up of this same check on the much larger full T1 sample (N = 547), including per-band posterior probability tables, see [the applied example](applied_example_pike/02_02_pike_2026_bandit.html#does-rescaling-parameters-change-reliability-estimates).
+Here they line up closely, but that won't always be true -- when RMU differs noticeably by scale, it's a sign that "how reliable is this parameter" doesn't have one scale-free answer, and the scale you report reliability on should be the one you'll actually use in downstream analyses. For a full write-up of this same check on the much larger full T1 sample (N = 547), including tables of the posterior probability that each parameter's reliability falls in the "poor" (< .6), "okay" (.6-.8) or "good" (> .8) range, see [the applied example](applied_example_pike/02_02_pike_2026_bandit.html#does-rescaling-parameters-change-reliability-estimates).
 
 # Empirical reliability
 
@@ -549,6 +540,14 @@ The two methods agree closely here. But note the asymmetry: RMU comes with the `
 Check the convergence diagnostics above before reading much into the reliability estimates -- if Rhat/ESS look healthy and there are no divergent transitions, the numbers above are a reasonable single-fit estimate of RMU reliability for this task and sample. For a more thoroughly-checked version of this exact model on this exact data (checked against test-retest and split-half reliability, and against a fit to the full N = 547 sample), see `applied_example_pike/02_02_pike_2026_bandit.qmd`.
 
 The key takeaway for your own models: whichever way you fit a hierarchical Bayesian model, if you can get a matrix of posterior draws with participants on the rows and draws on the columns, you can calculate RMU reliability with `rmu()` -- and if your model was fit with `hBayesDM` or `brms`, you can skip the matrix-pulling step entirely and just call `rmu()` on the fitted model object.
+
+# References
+
+Du Toit, M. (Ed.). (2003). *IRT from SSI: BILOG-MG, MULTILOG, PARSCALE, TESTFACT*. Scientific Software International.
+
+Pike, A. C., ... Roiser, J. P. (2026). The recoverability, reliability, and generalizability of reward processing parameters and relation to mental health symptoms. *Psychological Medicine, 56*, e238.
+
+Revelle, W., & Condon, D. M. (2018). Reliability. In P. Irwing, T. Booth, & D. J. Hughes (Eds.), *The Wiley handbook of psychometric testing: A multidisciplinary reference on survey, scale and test development* (1st ed.). John Wiley & Sons.
 
 # Session Info
 
